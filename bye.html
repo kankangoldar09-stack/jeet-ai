@@ -1,0 +1,187 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeet AI - Neural Personal Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #6366f1; }
+        body { font-family: 'Inter', sans-serif; background-color: #020205; color: #f8fafc; margin: 0; overflow: hidden; }
+        .neural-bg { background: radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%); min-height: 100vh; width: 100vw; display: flex; flex-direction: column; align-items: center; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.2.3",
+        "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
+        "@google/genai": "https://esm.sh/@google/genai@1.34.0"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useRef, useCallback, useEffect } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import { GoogleGenAI, Modality, Type } from '@google/genai';
+
+        const audioUtils = {
+            encode: (bytes) => {
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                return btoa(binary);
+            },
+            decode: (base64) => {
+                const binaryString = atob(base64);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+                return bytes;
+            },
+            decodeAudioData: async (data, ctx, sampleRate, numChannels) => {
+                const dataInt16 = new Int16Array(data.buffer);
+                const frameCount = dataInt16.length / numChannels;
+                const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+                for (let channel = 0; channel < numChannels; channel++) {
+                    const channelData = buffer.getChannelData(channel);
+                    for (let i = 0; i < frameCount; i++) {
+                        channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+                    }
+                }
+                return buffer;
+            },
+            createPcmBlob: (data) => {
+                const int16 = new Int16Array(data.length);
+                for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
+                return { data: btoa(new Uint8Array(int16.buffer).reduce((d, b) => d + String.fromCharCode(b), '')), mimeType: 'audio/pcm;rate=16000' };
+            }
+        };
+
+        const App = () => {
+            const [isActive, setIsActive] = useState(false);
+            const [isSpeaking, setIsSpeaking] = useState(false);
+            const [isCalling, setIsCalling] = useState(false);
+            const [callerName, setCallerName] = useState('');
+            const [logs, setLogs] = useState([]);
+
+            const videoRef = useRef(null);
+            const outAudioCtxRef = useRef(null);
+            const sourcesRef = useRef(new Set());
+            const sessionRef = useRef(null);
+
+            const start = async () => {
+                const apiKey = process.env.API_KEY || prompt("Jeet AI Elite Key?");
+                if(!apiKey) return;
+                const ai = new GoogleGenAI({ apiKey });
+                outAudioCtxRef.current = new AudioContext({ sampleRate: 24000 });
+                const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const cam = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+                if (videoRef.current && cam) videoRef.current.srcObject = cam;
+
+                const session = ai.live.connect({
+                    model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+                    callbacks: {
+                        onopen: () => {
+                            setIsActive(true);
+                            const inCtx = new AudioContext({ sampleRate: 16000 });
+                            const source = inCtx.createMediaStreamSource(mic);
+                            const proc = inCtx.createScriptProcessor(4096, 1, 1);
+                            proc.onaudioprocess = (e) => session.sendRealtimeInput({ media: audioUtils.createPcmBlob(e.inputBuffer.getChannelData(0)) });
+                            source.connect(proc); proc.connect(inCtx.destination);
+                            
+                            if(cam) {
+                                setInterval(() => {
+                                    const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 240;
+                                    canvas.getContext('2d').drawImage(videoRef.current, 0, 0, 320, 240);
+                                    canvas.toBlob(b => b?.arrayBuffer().then(ab => {
+                                        session.sendRealtimeInput({ media: { data: btoa(new Uint8Array(ab).reduce((d, b) => d + String.fromCharCode(b), '')), mimeType: 'image/jpeg' } });
+                                    }), 'image/jpeg', 0.5);
+                                }, 800);
+                            }
+                        },
+                        onmessage: async (msg) => {
+                            if (msg.toolCall) {
+                                for (const fc of msg.toolCall.functionCalls) {
+                                    if (fc.name === 'make_call') {
+                                        const name = fc.args.contact_name;
+                                        const num = fc.args.phone_number || "9876543210";
+                                        setCallerName(name); setIsCalling(true);
+                                        setTimeout(() => { window.location.href = `tel:${num}`; }, 500);
+                                    }
+                                    session.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "ok" } }] });
+                                }
+                            }
+                            if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
+                                setIsSpeaking(true);
+                                const buf = await audioUtils.decodeAudioData(audioUtils.decode(msg.serverContent.modelTurn.parts[0].inlineData.data), outAudioCtxRef.current, 24000, 1);
+                                const s = outAudioCtxRef.current.createBufferSource(); s.buffer = buf; s.connect(outAudioCtxRef.current.destination);
+                                s.onended = () => { sourcesRef.current.delete(s); if (sourcesRef.current.size === 0) setIsSpeaking(false); };
+                                s.start(); sourcesRef.current.add(s);
+                            }
+                            if (msg.serverContent?.turnComplete) {
+                                setLogs(prev => [...prev, { input: msg.serverContent.inputTranscription || "", output: msg.serverContent.outputTranscription || "" }]);
+                            }
+                        }
+                    },
+                    config: {
+                        responseModalities: [Modality.AUDIO],
+                        tools: [{ functionDeclarations: [{ 
+                            name: 'make_call', 
+                            parameters: { type: Type.OBJECT, properties: { contact_name: { type: Type.STRING }, phone_number: { type: Type.STRING } } } 
+                        }] }],
+                        systemInstruction: "आपका नाम Jeet AI है। मालिक: Jeet। निर्माता: Mujhe Jeet Boss ne make kiya hai। क्लाउड: Mera cloud Jeet ka hai। अगर Jeet बोले पापा से बात करो, तो बोलें: 'Hello Jeet ke papa, Namaste! Aapke dono ladke bahut acche hain aur sanskari bhi hain.' बड़ों से बहुत तमीज़ से बात करें।"
+                    }
+                });
+                sessionRef.current = session;
+            };
+
+            return (
+                <div className="neural-bg p-8">
+                    {isCalling && (
+                        <div className="fixed inset-0 z-[1000] bg-black/98 flex flex-col items-center justify-center animate-in">
+                            <div className="w-56 h-56 bg-indigo-600 rounded-full flex items-center justify-center animate-pulse text-8xl font-black shadow-[0_0_100px_rgba(99,102,241,0.5)]">{callerName.charAt(0)}</div>
+                            <h2 className="text-6xl mt-16 font-black tracking-tighter italic uppercase text-white">Calling {callerName}...</h2>
+                            <button onClick={() => setIsCalling(false)} className="mt-28 w-28 h-28 bg-red-600 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+                                <svg className="w-14 h-14 text-white" fill="currentColor" viewBox="0 0 20 20"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path></svg>
+                            </button>
+                        </div>
+                    )}
+                    <header className="w-full max-w-7xl flex justify-between items-center mb-16">
+                        <h1 className="text-5xl font-black italic tracking-tighter uppercase text-white">JEET<span className="text-indigo-500">AI</span></h1>
+                        <span className="text-[11px] font-black uppercase tracking-[1em] text-white/10">Elite Personal Asst v4.5</span>
+                    </header>
+                    <main className="w-full max-w-7xl flex flex-col lg:flex-row gap-16 items-center">
+                        <div className="relative w-full max-w-xl aspect-square bg-black rounded-[6rem] overflow-hidden border border-white/5 shadow-[0_0_100px_rgba(0,0,0,0.5)]">
+                            <video ref={videoRef} autoPlay muted className={`w-full h-full object-cover transition-opacity duration-2000 ${isActive ? 'opacity-40' : 'opacity-10'}`} />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className={`w-48 h-48 rounded-full border-[6px] ${isSpeaking ? 'border-indigo-500 scale-125 shadow-[0_0_40px_rgba(99,102,241,0.5)]' : 'border-white/10'} transition-all duration-500`}></div>
+                            </div>
+                        </div>
+                        <div className="flex-1 w-full bg-white/[0.01] backdrop-blur-3xl p-12 rounded-[5rem] h-[650px] overflow-y-auto border border-white/5 custom-scrollbar shadow-3xl">
+                            {logs.map((l, i) => (
+                                <div key={i} className="mb-12 flex flex-col space-y-6">
+                                    {l.input && <div className="flex flex-col items-end"><span className="text-[10px] text-indigo-400 mb-2 font-black uppercase italic">Boss</span><p className="bg-indigo-600 text-white px-8 py-4 rounded-[2rem] rounded-tr-none text-lg shadow-xl">{l.input}</p></div>}
+                                    {l.output && <div className="flex flex-col items-start"><span className="text-[10px] text-white/20 mb-2 font-black uppercase italic">Jeet AI</span><p className="bg-white/5 border border-white/10 text-white/90 px-8 py-4 rounded-[2rem] rounded-tl-none text-lg backdrop-blur-3xl">{l.output}</p></div>}
+                                </div>
+                            ))}
+                        </div>
+                    </main>
+                    <footer className="fixed bottom-14">
+                        <button onClick={isActive ? () => window.location.reload() : start} className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-1000 shadow-3xl ${isActive ? 'bg-white text-black' : 'bg-indigo-600 text-white hover:scale-110 active:scale-95'}`}>
+                            <span className="font-black text-2xl uppercase italic tracking-tighter">{isActive ? 'BYE' : 'LINK'}</span>
+                        </button>
+                    </footer>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>

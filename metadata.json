@@ -1,0 +1,9 @@
+{
+  "name": "Jeet AI - Neural Interface",
+  "description": "Premium voice-first AI assistant powered by Gemini 2.5 Flash Live. Speak, and it answers instantly.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}
