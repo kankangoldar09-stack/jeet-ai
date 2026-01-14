@@ -7,13 +7,25 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script>
-        // Critical: Prevent 'process is not defined' errors
+        // Critical: Provide 'process' object before any other script runs
         window.process = { env: { API_KEY: "" } };
+        
+        // Catch global errors to help debugging on GitHub Pages
+        window.onerror = function(msg, url, line, col, error) {
+            const root = document.getElementById('root');
+            if (root) {
+                root.innerHTML = `<div style="padding:40px; color:#ff4444; font-family:monospace; background:#111; height:100vh;">
+                    <h2 style="font-size:24px; margin-bottom:10px;">⚠️ JS Load Error</h2>
+                    <p style="font-size:14px; opacity:0.8;">${msg}</p>
+                    <p style="font-size:12px; margin-top:20px; opacity:0.5;">URL: ${url}<br>Line: ${line}</p>
+                    <button onclick="location.reload()" style="margin-top:30px; padding:10px 20px; background:#444; color:white; border:none; border-radius:5px;">Retry</button>
+                </div>`;
+            }
+            return false;
+        };
     </script>
     <style>
-        :root {
-            --accent: #6366f1;
-        }
+        :root { --accent: #6366f1; }
         body {
             background: #000000;
             color: #ffffff;
@@ -22,12 +34,9 @@
             padding: 0;
             overflow: hidden;
             height: 100vh;
-            height: 100dvh;
             width: 100vw;
             position: fixed;
             -webkit-font-smoothing: antialiased;
-            overscroll-behavior: none;
-            touch-action: manipulation;
         }
         #root {
             height: 100%;
@@ -44,20 +53,17 @@
             font-size: 10px;
             font-weight: 900;
             letter-spacing: 0.5em;
-            color: rgba(255,255,255,0.2);
+            color: rgba(255,255,255,0.3);
             animation: pulse 2s infinite;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 0.2; }
-            50% { opacity: 0.5; }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.6; } }
     </style>
     <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0?bundle",
-    "react-dom": "https://esm.sh/react-dom@19.0.0?bundle",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client?bundle",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "@google/genai": "https://esm.sh/@google/genai@1.35.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
@@ -67,7 +73,7 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Load the main module -->
-    <script type="module" src="./index.tsx"></script>
+    <!-- Script must be relative to work on GitHub Pages subpaths -->
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>
