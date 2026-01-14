@@ -7,22 +7,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script>
-        // Critical: Provide 'process' object before any other script runs
+        // Pre-define process for module compatibility
         window.process = { env: { API_KEY: "" } };
         
-        // Catch global errors to help debugging on GitHub Pages
-        window.onerror = function(msg, url, line, col, error) {
+        // Error tracker
+        window.addEventListener('error', (e) => {
+            console.error('Runtime Error:', e.error);
             const root = document.getElementById('root');
-            if (root) {
-                root.innerHTML = `<div style="padding:40px; color:#ff4444; font-family:monospace; background:#111; height:100vh;">
-                    <h2 style="font-size:24px; margin-bottom:10px;">⚠️ JS Load Error</h2>
-                    <p style="font-size:14px; opacity:0.8;">${msg}</p>
-                    <p style="font-size:12px; margin-top:20px; opacity:0.5;">URL: ${url}<br>Line: ${line}</p>
-                    <button onclick="location.reload()" style="margin-top:30px; padding:10px 20px; background:#444; color:white; border:none; border-radius:5px;">Retry</button>
+            if (root && root.innerHTML === '') {
+                root.innerHTML = `<div style="padding:20px;color:#ff4444;font-family:monospace;background:#000;height:100vh;">
+                    <h1 style="font-size:20px">⚠️ Connection Error</h1>
+                    <p>${e.message}</p>
+                    <button onclick="location.reload()" style="background:#222;color:#fff;padding:10px 20px;margin-top:20px;border-radius:8px">Retry</button>
                 </div>`;
             }
-            return false;
-        };
+        });
     </script>
     <style>
         :root { --accent: #6366f1; }
@@ -73,7 +72,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Script must be relative to work on GitHub Pages subpaths -->
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

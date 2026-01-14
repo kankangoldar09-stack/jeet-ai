@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { createBlob, decode, decodeAudioData, createWavFile } from './utils/audio-helpers.ts';
-import Visualizer from './components/Visualizer.tsx';
+import { createBlob, decode, decodeAudioData, createWavFile } from './utils/audio-helpers';
+import Visualizer from './components/Visualizer';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'jeetai' | 'power' | 'studio'>('jeetai');

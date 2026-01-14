@@ -1,11 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.tsx';
+import App from './App';
 
-const init = () => {
-    const container = document.getElementById('root');
-    if (!container) return;
-    
+const container = document.getElementById('root');
+
+if (container) {
     try {
         const root = ReactDOM.createRoot(container);
         root.render(
@@ -13,15 +12,12 @@ const init = () => {
                 <App />
             </React.StrictMode>
         );
-        console.log("Jeet AI: Neural Link Established");
-    } catch (e) {
-        console.error("Mounting failed:", e);
-        container.innerHTML = `<div style="color:red; padding:20px;">Mounting Error: ${e.message}</div>`;
+        console.log("Jeet AI: Initialized");
+    } catch (err) {
+        console.error("Initialization Failed:", err);
+        container.innerHTML = `<div style="color:white;padding:20px;font-family:sans-serif">
+            <h2>Critical Error</h2>
+            <p>${err.message}</p>
+        </div>`;
     }
-};
-
-if (document.readyState === 'complete') {
-    init();
-} else {
-    window.addEventListener('load', init);
 }
