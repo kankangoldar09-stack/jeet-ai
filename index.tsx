@@ -2,22 +2,31 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-const container = document.getElementById('root');
+const mount = () => {
+    const el = document.getElementById('root');
+    if (!el) return;
 
-if (container) {
     try {
-        const root = ReactDOM.createRoot(container);
+        const root = ReactDOM.createRoot(el);
         root.render(
             <React.StrictMode>
                 <App />
             </React.StrictMode>
         );
-        console.log("Jeet AI: Initialized");
-    } catch (err) {
-        console.error("Initialization Failed:", err);
-        container.innerHTML = `<div style="color:white;padding:20px;font-family:sans-serif">
-            <h2>Critical Error</h2>
-            <p>${err.message}</p>
-        </div>`;
+        console.log("Jeet AI: Neural link initialized.");
+    } catch (err: any) {
+        console.error("Mount failed:", err);
+        el.innerHTML = `
+            <div style="color:white; padding:40px; font-family:sans-serif; background:black; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                <h2 style="color:#6366f1;">BOOT ERROR</h2>
+                <p style="opacity:0.5; font-size:14px; margin-top:10px;">${err.message}</p>
+            </div>
+        `;
     }
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount);
+} else {
+    mount();
 }

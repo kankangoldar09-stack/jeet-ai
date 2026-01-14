@@ -7,18 +7,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script>
-        // Pre-define process for module compatibility
+        // Global process shim for library compatibility
         window.process = { env: { API_KEY: "" } };
         
-        // Error tracker
+        // Error tracker: Shows a visual error if the app fails to mount
         window.addEventListener('error', (e) => {
-            console.error('Runtime Error:', e.error);
+            console.error('Core Error:', e.message);
             const root = document.getElementById('root');
             if (root && root.innerHTML === '') {
-                root.innerHTML = `<div style="padding:20px;color:#ff4444;font-family:monospace;background:#000;height:100vh;">
-                    <h1 style="font-size:20px">⚠️ Connection Error</h1>
-                    <p>${e.message}</p>
-                    <button onclick="location.reload()" style="background:#222;color:#fff;padding:10px 20px;margin-top:20px;border-radius:8px">Retry</button>
+                root.innerHTML = `<div style="padding:40px; color:#ff4444; font-family:monospace; background:#000; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
+                    <div style="font-size:40px; margin-bottom:20px;">⚠️</div>
+                    <h1 style="font-size:18px; margin-bottom:10px; font-weight:900;">LOAD FAILURE</h1>
+                    <p style="opacity:0.6; max-width:280px; line-height:1.5; font-size:12px;">${e.message}</p>
+                    <button onclick="location.reload()" style="background:#6366f1; color:#fff; padding:12px 24px; margin-top:30px; border-radius:12px; border:none; font-weight:bold; cursor:pointer;">RETRY</button>
                 </div>`;
             }
         });
@@ -43,19 +44,7 @@
             display: flex;
             flex-direction: column;
         }
-        #root:empty::before {
-            content: 'JEET AI INITIALIZING...';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 10px;
-            font-weight: 900;
-            letter-spacing: 0.5em;
-            color: rgba(255,255,255,0.3);
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+        /* Initializing text removed as per user request */
     </style>
     <script type="importmap">
 {
