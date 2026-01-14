@@ -1,9 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
-import { createBlob, decode, decodeAudioData, createWavFile } from './utils/audio-helpers';
-import Visualizer from './components/Visualizer';
-
-const BOSS_PASSWORD = "JEET8474947203";
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { createBlob, decode, decodeAudioData, createWavFile } from './utils/audio-helpers.ts';
+import Visualizer from './components/Visualizer.tsx';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'jeetai' | 'power' | 'studio'>('jeetai');
@@ -11,7 +9,6 @@ const App: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelSpeaking, setIsModelSpeaking] = useState(false);
   
-  // States
   const [powerPrompt, setPowerPrompt] = useState('');
   const [isGeneratingPower, setIsGeneratingPower] = useState(false);
   const [generatedResult, setGeneratedResult] = useState<string | null>(null);
@@ -19,7 +16,6 @@ const App: React.FC = () => {
   const [isGeneratingStudio, setIsGeneratingStudio] = useState(false);
   const [studioAudioUrl, setStudioAudioUrl] = useState<string | null>(null);
 
-  // Refs
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());

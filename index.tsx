@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import App from './App.tsx';
 
 const startApp = () => {
   const rootElement = document.getElementById('root');
@@ -16,7 +16,6 @@ const startApp = () => {
   }
 };
 
-// Ensure DOM is ready before starting
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', startApp);
 } else {
