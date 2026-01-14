@@ -14,35 +14,11 @@ const App: React.FC = () => {
   const [generatedResult, setGeneratedResult] = useState<string | null>(null);
   const [studioText, setStudioText] = useState('');
   const [isGeneratingStudio, setIsGeneratingStudio] = useState(false);
-  const [studioAudioUrl, setStudioAudioUrl] = useState<string | null>(null);
-
+  
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
-
-  const applyWatermark = (base64: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width; canvas.height = img.height;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0);
-          const padding = canvas.width * 0.05;
-          const fontSize = canvas.width * 0.15;
-          ctx.font = `italic 900 ${fontSize}px Inter, sans-serif`;
-          const gradient = ctx.createLinearGradient(canvas.width-padding-fontSize, canvas.height-padding-fontSize, canvas.width-padding, canvas.height-padding);
-          gradient.addColorStop(0, '#6366f1'); gradient.addColorStop(1, '#ffffff');
-          ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20;
-          ctx.fillStyle = gradient; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-          ctx.fillText('J', canvas.width - padding, canvas.height - padding);
-          resolve(canvas.toDataURL('image/png'));
-      };
-      img.src = base64;
-    });
-  };
 
   const stopConversation = useCallback(() => {
     setIsActive(false);
@@ -59,11 +35,19 @@ const App: React.FC = () => {
 
   const startConversation = async () => {
     try {
+      const key = process.env.API_KEY;
+      if (!key) {
+        alert("Boss, API Key missing!");
+        return;
+      }
+
       setIsConnecting(true);
-      if (!outAudioCtxRef.current) outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      if (!outAudioCtxRef.current) {
+        outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
       await outAudioCtxRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: key });
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
@@ -76,27 +60,36 @@ const App: React.FC = () => {
             const source = inCtx.createMediaStreamSource(micStream);
             const proc = inCtx.createScriptProcessor(4096, 1, 1);
             proc.onaudioprocess = (e) => {
-              sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) }));
+              sessionPromise.then(s => s.sendRealtimeInput({ 
+                media: createBlob(e.inputBuffer.getChannelData(0)) 
+              }));
             };
-            source.connect(proc); proc.connect(inCtx.destination);
+            source.connect(proc); 
+            proc.connect(inCtx.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
             if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
               const ctx = outAudioCtxRef.current!;
               setIsModelSpeaking(true);
               const buf = await decodeAudioData(decode(msg.serverContent.modelTurn.parts[0].inlineData.data), ctx, 24000, 1);
-              const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination);
+              const s = ctx.createBufferSource(); 
+              s.buffer = buf; 
+              s.connect(ctx.destination);
               s.onended = () => {
                   activeSourcesRef.current.delete(s);
                   if (activeSourcesRef.current.size === 0) setIsModelSpeaking(false);
               };
               const now = Math.max(nextStartTimeRef.current, ctx.currentTime);
-              s.start(now); nextStartTimeRef.current = now + buf.duration;
+              s.start(now); 
+              nextStartTimeRef.current = now + buf.duration;
               activeSourcesRef.current.add(s);
             }
           },
-          onerror: stopConversation,
-          onclose: stopConversation,
+          onerror: (e) => {
+            console.error("Live Error:", e);
+            stopConversation();
+          },
+          onclose: () => stopConversation(),
         },
         config: {
           responseModalities: [Modality.AUDIO],
@@ -106,33 +99,38 @@ const App: React.FC = () => {
       sessionPromiseRef.current = sessionPromise;
     } catch (e) {
       setIsConnecting(false);
+      console.error("Start Conversation Error:", e);
       alert("Please allow Microphone access Boss!");
     }
   };
 
   const generatePowerImage = async () => {
-    if (!powerPrompt) return;
+    const key = process.env.API_KEY;
+    if (!powerPrompt || !key) return;
     setIsGeneratingPower(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: key });
       const res = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: powerPrompt + " cinematic masterpiece high quality" }] }
       });
       const part = res.candidates[0].content.parts.find(p => p.inlineData);
       if (part?.inlineData) {
-          const watermarked = await applyWatermark(`data:image/png;base64,${part.inlineData.data}`);
-          setGeneratedResult(watermarked);
+          setGeneratedResult(`data:image/png;base64,${part.inlineData.data}`);
       }
-    } catch (e) { alert("Power vision failed Boss!"); }
+    } catch (e) { 
+      console.error(e);
+      alert("Power vision failed Boss!"); 
+    }
     finally { setIsGeneratingPower(false); }
   };
 
   const generateStudioVoice = async () => {
-    if (!studioText) return;
+    const key = process.env.API_KEY;
+    if (!studioText || !key) return;
     setIsGeneratingStudio(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: key });
       const res = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: studioText }] }],
@@ -144,58 +142,78 @@ const App: React.FC = () => {
       const data = res.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (data) {
         const url = URL.createObjectURL(createWavFile(decode(data), 24000));
-        setStudioAudioUrl(url);
         new Audio(url).play();
       }
-    } catch (e) { alert("Studio recording error!"); }
+    } catch (e) { 
+      console.error(e);
+      alert("Studio recording error!"); 
+    }
     finally { setIsGeneratingStudio(false); }
   };
 
   return (
-    <div className="h-[100dvh] w-full bg-black text-white flex flex-col relative overflow-hidden">
+    <div className="h-full w-full bg-black text-white flex flex-col relative overflow-hidden">
       <div className="fixed inset-0 opacity-20 pointer-events-none bg-[radial-gradient(circle_at_50%_50%,#4338ca_0%,transparent_70%)]" />
 
-      <header className="relative z-50 pt-12 pb-6 px-6 bg-black/40 backdrop-blur-xl border-b border-white/5 flex justify-between items-center">
+      <header className="relative z-50 pt-10 pb-4 px-6 bg-black/40 backdrop-blur-xl border-b border-white/5 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-xl shadow-[0_0_20px_rgba(79,70,229,0.5)]">⚡</div>
-          <h1 className="text-xl font-black italic tracking-tighter uppercase leading-none">JEET <span className="text-indigo-400">AI</span></h1>
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-lg shadow-[0_0_15px_rgba(79,70,229,0.5)]">⚡</div>
+          <h1 className="text-lg font-black italic tracking-tighter uppercase leading-none">JEET <span className="text-indigo-400">AI</span></h1>
         </div>
         
         <nav className="flex bg-white/5 p-1 rounded-full border border-white/10 scale-90">
             {['jeetai', 'power', 'studio'].map(tab => (
-                <button key={tab} onClick={() => { stopConversation(); setActiveTab(tab as any); }} className={`px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-indigo-600 shadow-lg' : 'text-white/40'}`}>
+                <button 
+                  key={tab} 
+                  onClick={() => { stopConversation(); setActiveTab(tab as any); }} 
+                  className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-wider transition-all ${activeTab === tab ? 'bg-indigo-600' : 'text-white/40'}`}
+                >
                     {tab === 'jeetai' ? 'AI' : tab}
                 </button>
             ))}
         </nav>
       </header>
 
-      <main className="flex-1 relative z-10 flex flex-col items-center justify-center px-6 py-8">
+      <main className="flex-1 relative z-10 flex flex-col items-center justify-center px-6 py-4">
         {activeTab === 'jeetai' && (
-          <div className="w-full flex flex-col items-center animate-in">
-            <div className="w-64 h-64 relative mb-16 flex items-center justify-center">
+          <div className="w-full flex flex-col items-center">
+            <div className="w-64 h-64 relative mb-12 flex items-center justify-center">
               <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="normal" />
-              {isConnecting && <div className="absolute w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+              {isConnecting && <div className="absolute w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
             </div>
-            <button onClick={isActive ? stopConversation : startConversation} className={`w-28 h-28 rounded-full flex items-center justify-center transition-all shadow-2xl border-4 border-white/10 active:scale-95 ${isActive ? 'bg-red-600' : 'bg-indigo-600'}`}>
-              <span className="text-4xl font-black">{isActive ? '✕' : '⚡'}</span>
+            <button 
+              onClick={isActive ? stopConversation : startConversation} 
+              className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-2xl border-4 border-white/10 active:scale-90 ${isActive ? 'bg-red-600' : 'bg-indigo-600'}`}
+            >
+              <span className="text-3xl font-black">{isActive ? '✕' : '⚡'}</span>
             </button>
-            <p className="mt-8 text-[10px] uppercase font-black tracking-[0.5em] text-white/20">{isActive ? 'Active' : 'Click to connect'}</p>
+            <p className="mt-6 text-[9px] uppercase font-black tracking-[0.5em] text-white/20">
+              {isActive ? 'Neural Link Active' : 'Click to Wake AI'}
+            </p>
           </div>
         )}
 
         {activeTab === 'power' && (
-          <div className="w-full max-w-sm flex flex-col gap-6 animate-in">
+          <div className="w-full max-w-sm flex flex-col gap-4">
             {generatedResult ? (
-              <div className="relative animate-in">
-                <img src={generatedResult} className="w-full aspect-square rounded-[2.5rem] object-cover border-4 border-white/5 shadow-2xl" />
-                <button onClick={() => setGeneratedResult(null)} className="absolute -top-3 -right-3 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-bold">✕</button>
+              <div className="relative animate-in fade-in duration-500">
+                <img src={generatedResult} className="w-full aspect-square rounded-[2rem] object-cover border-4 border-white/5 shadow-2xl" />
+                <button onClick={() => setGeneratedResult(null)} className="absolute -top-3 -right-3 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold">✕</button>
               </div>
             ) : (
               <div className="flex flex-col gap-4">
-                <textarea value={powerPrompt} onChange={e => setPowerPrompt(e.target.value)} placeholder="Describe vision Boss..." className="w-full h-40 bg-white/5 border border-white/10 rounded-[2rem] p-6 text-sm focus:outline-none placeholder:opacity-20 resize-none" />
-                <button onClick={generatePowerImage} disabled={isGeneratingPower || !powerPrompt} className="w-full py-5 bg-indigo-600 rounded-[2rem] font-black uppercase tracking-widest disabled:opacity-20">
-                  {isGeneratingPower ? 'Building...' : 'Generate ⚡'}
+                <textarea 
+                  value={powerPrompt} 
+                  onChange={e => setPowerPrompt(e.target.value)} 
+                  placeholder="Describe vision Boss..." 
+                  className="w-full h-32 bg-white/5 border border-white/10 rounded-[1.5rem] p-5 text-sm focus:outline-none placeholder:opacity-20 resize-none" 
+                />
+                <button 
+                  onClick={generatePowerImage} 
+                  disabled={isGeneratingPower || !powerPrompt} 
+                  className="w-full py-4 bg-indigo-600 rounded-[1.5rem] font-black uppercase tracking-widest disabled:opacity-20 active:scale-95 transition-transform"
+                >
+                  {isGeneratingPower ? 'Building...' : 'Visualize ⚡'}
                 </button>
               </div>
             )}
@@ -203,17 +221,26 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'studio' && (
-          <div className="w-full max-w-sm flex flex-col gap-6 animate-in">
-            <textarea value={studioText} onChange={e => setStudioText(e.target.value)} placeholder="Type voice text Boss..." className="w-full h-48 bg-white/5 border border-white/10 rounded-[2rem] p-6 text-sm focus:outline-none placeholder:opacity-20 resize-none" />
-            <button onClick={generateStudioVoice} disabled={isGeneratingStudio || !studioText} className="w-full py-5 bg-indigo-600 rounded-[2rem] font-black uppercase tracking-widest disabled:opacity-20">
-              {isGeneratingStudio ? 'Processing...' : 'Record 🔊'}
+          <div className="w-full max-w-sm flex flex-col gap-4">
+            <textarea 
+              value={studioText} 
+              onChange={e => setStudioText(e.target.value)} 
+              placeholder="Type voice text Boss..." 
+              className="w-full h-40 bg-white/5 border border-white/10 rounded-[1.5rem] p-5 text-sm focus:outline-none placeholder:opacity-20 resize-none" 
+            />
+            <button 
+              onClick={generateStudioVoice} 
+              disabled={isGeneratingStudio || !studioText} 
+              className="w-full py-4 bg-indigo-600 rounded-[1.5rem] font-black uppercase tracking-widest disabled:opacity-20 active:scale-95 transition-transform"
+            >
+              {isGeneratingStudio ? 'Processing...' : 'Generate Voice 🔊'}
             </button>
           </div>
         )}
       </main>
 
-      <footer className="relative z-20 pb-12 pt-6 px-6 text-center opacity-30">
-        <p className="text-[9px] font-black uppercase tracking-[0.5em]">Jeet AI • Neural v5.1</p>
+      <footer className="relative z-20 pb-8 pt-4 px-6 text-center opacity-20">
+        <p className="text-[8px] font-black uppercase tracking-[0.4em]">Jeet AI Neural Interface v5.1</p>
       </footer>
     </div>
   );
