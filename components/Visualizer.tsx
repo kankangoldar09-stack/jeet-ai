@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 
 export type EmotionMode = 'normal' | 'happy' | 'respectful' | 'intense' | 'sweet';
@@ -9,8 +8,7 @@ interface VisualizerProps {
   mode?: EmotionMode;
 }
 
-// Fixed JSX errors by using standard function declaration and ensuring React is correctly scoped for JSX
-const Visualizer = ({ isActive, isModelSpeaking, mode = 'normal' }: VisualizerProps) => {
+const Visualizer: React.FC<VisualizerProps> = ({ isActive, isModelSpeaking, mode = 'normal' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -33,34 +31,22 @@ const Visualizer = ({ isActive, isModelSpeaking, mode = 'normal' }: VisualizerPr
       
       rotation += mode === 'intense' ? 0.03 : 0.01;
 
-      // Color logic
-      let primaryColor = '100, 102, 241'; // Default Indigo
+      let primaryColor = '100, 102, 241'; // Indigo
       
-      if (mode === 'happy') {
-        primaryColor = '244, 63, 94'; // Rose/Pink for GF Mode
-      } else if (mode === 'respectful') {
-        primaryColor = '16, 185, 129'; // Emerald
-      } else if (mode === 'intense') {
-        primaryColor = '239, 68, 68'; // Red
-      }
+      if (mode === 'happy') primaryColor = '244, 63, 94';
+      else if (mode === 'respectful') primaryColor = '16, 185, 129';
+      else if (mode === 'intense') primaryColor = '239, 68, 68';
 
       if (isModelSpeaking) {
-        // Dynamic speaking color
-        if (mode === 'happy') {
-          primaryColor = '251, 113, 133'; // Lighter Rose
-        } else {
-          primaryColor = '14, 165, 233'; // Cyan
-        }
+        primaryColor = mode === 'happy' ? '251, 113, 133' : '14, 165, 233';
       }
 
-      // Draw outer glow
       const outerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius * 2.5);
       outerGlow.addColorStop(0, `rgba(${primaryColor}, 0.2)`);
       outerGlow.addColorStop(1, 'transparent');
       ctx.fillStyle = outerGlow;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw rotating rings
       for (let i = 0; i < 4; i++) {
         ctx.beginPath();
         const r = baseRadius + i * 20 + pulse;
@@ -72,7 +58,6 @@ const Visualizer = ({ isActive, isModelSpeaking, mode = 'normal' }: VisualizerPr
         ctx.stroke();
       }
 
-      // Draw central core
       const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
       gradient.addColorStop(0, `rgb(${primaryColor})`);
       gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
@@ -81,21 +66,6 @@ const Visualizer = ({ isActive, isModelSpeaking, mode = 'normal' }: VisualizerPr
       ctx.arc(centerX, centerY, baseRadius - 5 + pulse, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
       ctx.fill();
-
-      // Reactive waveform
-      if (isActive) {
-        ctx.beginPath();
-        const amplitude = isModelSpeaking ? 35 : (mode === 'intense' ? 20 : 10);
-        const frequency = 0.015;
-        for (let x = 0; x < canvas.width; x += 2) {
-          const y = centerY + Math.sin(x * frequency + Date.now() * 0.015) * amplitude;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.strokeStyle = `rgba(${primaryColor}, 0.3)`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
 
       animationFrameId = requestAnimationFrame(animate);
     };

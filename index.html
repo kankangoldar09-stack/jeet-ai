@@ -7,17 +7,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <script>
-        // Global process shim for library compatibility
+        // Pre-define process for compatibility
         window.process = { env: { API_KEY: "" } };
         
-        // Error tracker: Shows a visual error if the app fails to mount
+        // Error handling for debugging on the phone/browser
         window.addEventListener('error', (e) => {
             console.error('Core Error:', e.message);
             const root = document.getElementById('root');
             if (root && root.innerHTML === '') {
                 root.innerHTML = `<div style="padding:40px; color:#ff4444; font-family:monospace; background:#000; height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;">
                     <div style="font-size:40px; margin-bottom:20px;">⚠️</div>
-                    <h1 style="font-size:18px; margin-bottom:10px; font-weight:900;">LOAD FAILURE</h1>
+                    <h1 style="font-size:18px; margin-bottom:10px; font-weight:900;">APP CRASHED</h1>
                     <p style="opacity:0.6; max-width:280px; line-height:1.5; font-size:12px;">${e.message}</p>
                     <button onclick="location.reload()" style="background:#6366f1; color:#fff; padding:12px 24px; margin-top:30px; border-radius:12px; border:none; font-weight:bold; cursor:pointer;">RETRY</button>
                 </div>`;
@@ -41,10 +41,7 @@
         #root {
             height: 100%;
             width: 100%;
-            display: flex;
-            flex-direction: column;
         }
-        /* Initializing text removed as per user request */
     </style>
     <script type="importmap">
 {
