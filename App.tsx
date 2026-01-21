@@ -1,376 +1,383 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { createBlob, decode, decodeAudioData } from './utils/audio-helpers';
 import Visualizer from './components/Visualizer';
 
+// Firebase Configuration provided by User
+const firebaseConfig = {
+  apiKey: "AIzaSyCaIP3vdUxuNemn9eJsvU-tTUJqq835Zp0",
+  authDomain: "jeet-ai-d34b4.firebaseapp.com",
+  projectId: "jeet-ai-d34b4",
+  storageBucket: "jeet-ai-d34b4.firebasestorage.app",
+  messagingSenderId: "781777412725",
+  appId: "1:781777412725:web:ea705b9223fff3716ace3c"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'neural' | 'power' | 'log'>('neural');
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [activeTab, setActiveTab] = useState<'neural' | 'ocr' | 'power' | 'news' | 'social'>('neural');
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelSpeaking, setIsModelSpeaking] = useState(false);
-  const [isCalling, setIsCalling] = useState(false);
-  const [callerName, setCallerName] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Transcription State
+  const [transcriptions, setTranscriptions] = useState<{user: string, model: string}[]>([]);
+  const currentTranscriptionRef = useRef({ user: '', model: '' });
   
+  // Camera State
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const frameIntervalRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // Feature States
+  const [ocrImage, setOcrImage] = useState<{data: string, mimeType: string} | null>(null);
+  const [ocrResult, setOcrResult] = useState('');
+  const [isExtractingOcr, setIsExtractingOcr] = useState(false);
   const [powerPrompt, setPowerPrompt] = useState('');
   const [isGeneratingPower, setIsGeneratingPower] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [logs, setLogs] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+  const [visionTextResult, setVisionTextResult] = useState('');
+  const [uploadedImage, setUploadedImage] = useState<{data: string, mimeType: string} | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const ocrFileInputRef = useRef<HTMLInputElement>(null);
+  const [newsQuery, setNewsQuery] = useState('');
+  const [isSearchingNews, setIsSearchingNews] = useState(false);
+  const [newsResult, setNewsResult] = useState<{text: string, links: {title: string, uri: string}[]} | null>(null);
 
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const transcriptionRef = useRef({ user: '', ai: '' });
-  const visionIntervalRef = useRef<number | null>(null);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      setErrorMsg(null);
+      await signInWithPopup(auth, googleProvider);
+    } catch (e: any) {
+      setErrorMsg("Authentication Failed: " + e.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    stopConversation();
+    await signOut(auth);
+  };
 
   const stopConversation = useCallback(() => {
     setIsActive(false);
     setIsConnecting(false);
     setIsModelSpeaking(false);
-    
-    activeSourcesRef.current.forEach(s => { try { s.stop(); } catch(e) {} });
+    if (frameIntervalRef.current) {
+        window.clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+    }
+    activeSourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     activeSourcesRef.current.clear();
     nextStartTimeRef.current = 0;
-
     if (sessionRef.current) {
-      sessionRef.current.close();
-      sessionRef.current = null;
-    }
-
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-
-    if (visionIntervalRef.current) {
-      clearInterval(visionIntervalRef.current);
-      visionIntervalRef.current = null;
+        try { sessionRef.current.close(); } catch (e) {}
+        sessionRef.current = null;
     }
   }, []);
 
+  const toggleCamera = async () => {
+    if (isCameraOn) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) videoRef.current.srcObject = null;
+      setIsCameraOn(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
+        });
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setIsCameraOn(true);
+        setErrorMsg(null);
+      } catch (e) {
+        setErrorMsg("Camera access blocked Boss!");
+      }
+    }
+  };
+
   const startConversation = async () => {
-    try {
-      const key = process.env.API_KEY;
-      if (!key || key.trim() === "") {
-        alert("Boss, API Key missing! Please check your environment variables.");
+    setErrorMsg(null);
+    setHasStarted(true);
+    setTranscriptions([]);
+
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        setErrorMsg("Critical: API Key Missing from Environment.");
         return;
-      }
+    }
 
+    try {
       setIsConnecting(true);
-      
-      // Initialize Audio Context on User Interaction
       if (!outAudioCtxRef.current) {
-        outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+          outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
-      await outAudioCtxRef.current.resume();
+      if (outAudioCtxRef.current.state === 'suspended') await outAudioCtxRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: key });
-      
-      // Get User Media
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const camStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480, frameRate: { ideal: 15 } } 
-      }).catch((err) => {
-        console.warn("Camera access denied or not available:", err);
-        return null;
-      });
-      
-      if (videoRef.current && camStream) {
-        videoRef.current.srcObject = camStream;
-      }
+      const ai = new GoogleGenAI({ apiKey });
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            setIsConnecting(false);
+            setIsConnecting(false); 
             setIsActive(true);
-            
-            // Audio Input Processing
-            const inCtx = new AudioContext({ sampleRate: 16000 });
+            const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             const source = inCtx.createMediaStreamSource(micStream);
-            const proc = inCtx.createScriptProcessor(4096, 1, 1);
-            proc.onaudioprocess = (e) => {
-              if (sessionRef.current) {
-                sessionRef.current.sendRealtimeInput({ 
-                  media: createBlob(e.inputBuffer.getChannelData(0)) 
-                });
-              }
+            const proc = inCtx.createScriptProcessor(2048, 1, 1);
+            proc.onaudioprocess = (e) => { 
+                sessionPromise.then(s => {
+                    if (s && s.sendRealtimeInput) s.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) });
+                }).catch(() => {});
             };
-            source.connect(proc);
+            source.connect(proc); 
             proc.connect(inCtx.destination);
 
-            // Vision Input Processing (Frames)
-            if (camStream) {
-              visionIntervalRef.current = window.setInterval(() => {
-                if (!sessionRef.current || !videoRef.current || !canvasRef.current) return;
-                const ctx = canvasRef.current.getContext('2d');
-                if (!ctx) return;
-                
-                // Draw frame to hidden canvas
-                ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-                const base64 = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
-                
-                sessionRef.current.sendRealtimeInput({ 
-                  media: { data: base64, mimeType: 'image/jpeg' } 
-                });
-              }, 800);
-            }
+            frameIntervalRef.current = window.setInterval(() => {
+                if (isCameraOn && videoRef.current && videoRef.current.readyState === 4) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 320; canvas.height = 240;
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+                        const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                        sessionPromise.then(s => {
+                            if (s && s.sendRealtimeInput) s.sendRealtimeInput({ media: { data: base64, mimeType: 'image/jpeg' } });
+                        }).catch(() => {});
+                    }
+                }
+            }, 1000);
           },
           onmessage: async (msg: LiveServerMessage) => {
-            // Tool Calls Handling
-            if (msg.toolCall) {
-              for (const fc of msg.toolCall.functionCalls) {
-                if (fc.name === 'make_call') {
-                  const name = (fc.args as any).contact_name || "Unknown";
-                  setCallerName(name);
-                  setIsCalling(true);
-                  sessionRef.current?.sendToolResponse({ 
-                    functionResponses: [{ id: fc.id, name: fc.name, response: { status: "Initiating elite connection..." } }]
-                  });
-                }
-              }
+            if (msg.serverContent?.inputTranscription) currentTranscriptionRef.current.user += msg.serverContent.inputTranscription.text;
+            if (msg.serverContent?.outputTranscription) currentTranscriptionRef.current.model += msg.serverContent.outputTranscription.text;
+            if (msg.serverContent?.turnComplete) {
+                const finished = { ...currentTranscriptionRef.current };
+                setTranscriptions(prev => [finished, ...prev].slice(0, 5));
+                currentTranscriptionRef.current = { user: '', model: '' };
             }
-
-            // Transcriptions
-            if (msg.serverContent?.inputTranscription) {
-              transcriptionRef.current.user += msg.serverContent.inputTranscription.text;
-            }
-            if (msg.serverContent?.outputTranscription) {
-              transcriptionRef.current.ai += msg.serverContent.outputTranscription.text;
-            }
-
-            // Audio Response Processing
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (audioData) {
               const ctx = outAudioCtxRef.current!;
               setIsModelSpeaking(true);
               const buf = await decodeAudioData(decode(audioData), ctx, 24000, 1);
               const s = ctx.createBufferSource();
-              s.buffer = buf;
-              s.connect(ctx.destination);
-              s.onended = () => {
-                activeSourcesRef.current.delete(s);
-                if (activeSourcesRef.current.size === 0) setIsModelSpeaking(false);
+              s.buffer = buf; s.connect(ctx.destination);
+              s.onended = () => { 
+                  activeSourcesRef.current.delete(s); 
+                  if (activeSourcesRef.current.size === 0) setIsModelSpeaking(false); 
               };
-              
               const now = Math.max(nextStartTimeRef.current, ctx.currentTime);
               s.start(now);
               nextStartTimeRef.current = now + buf.duration;
               activeSourcesRef.current.add(s);
             }
-
-            // Log Completion
-            if (msg.serverContent?.turnComplete) {
-              if (transcriptionRef.current.user || transcriptionRef.current.ai) {
-                setLogs(prev => [
-                  ...prev, 
-                  { role: 'user', text: transcriptionRef.current.user || "(Audio input)" },
-                  { role: 'ai', text: transcriptionRef.current.ai || "(Thinking...)" }
-                ]);
-                transcriptionRef.current = { user: '', ai: '' };
-              }
-            }
           },
-          onerror: (e) => { 
-            console.error("Neural Link Error:", e); 
-            stopConversation(); 
-          },
-          onclose: () => { 
-            console.log("Neural Link Terminated");
-            stopConversation(); 
-          },
+          onclose: () => stopConversation(),
+          onerror: () => { setErrorMsg("Jeet disconnected!"); stopConversation(); }
         },
         config: {
-          responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          tools: [{
-            functionDeclarations: [{
-              name: 'make_call',
-              description: 'Initiates a phone call to a contact.',
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  contact_name: { type: Type.STRING },
-                  phone_number: { type: Type.STRING }
-                },
-                required: ['contact_name']
-              }
-            }]
-          }],
-          systemInstruction: "IDENTITY: Your name is 'Jeet AI'. Created by 'Jeet Boss'. Language: Hinglish. PERSONALITY: Sharp, elite assistant. Always call user 'Boss'. PROTOCOL: If Boss says 'Papa se baat karao', respond politely: 'Hello Jeet ke papa, Namaste! Aapke dono ladke bahut acche hain aur sanskari bhi hain.' VISION: You can see via camera frames. Use make_call tool when requested."
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+            systemInstruction: `आपका नाम Jeet AI है। निर्माता: Jeet Boss। यूज़र का नाम: ${user?.displayName || 'Boss'}। आप एक मज़ेदार और स्मार्ट असिस्टेंट हैं। हमेशा 'आप' का प्रयोग करें।`
         }
       });
-      
       sessionRef.current = await sessionPromise;
-    } catch (e) {
-      console.error("Initialization Failed:", e);
-      setIsConnecting(false);
-      alert("Neural initialization failed. Please ensure mic and camera permissions are granted.");
+    } catch (e: any) { 
+        setIsConnecting(false); 
+        setErrorMsg("Boot Error: Check API Key/Network.");
     }
   };
 
-  const generateImage = async () => {
-    if (!powerPrompt) return;
-    setIsGeneratingPower(true);
+  const handleOcrExtraction = async () => {
+    if (!ocrImage || isExtractingOcr) return;
+    setIsExtractingOcr(true); setOcrResult('');
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const res = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: `${powerPrompt}. Ultra-realistic, 8k cinematic lighting, masterwork.` }] }
+        model: 'gemini-3-flash-preview',
+        contents: { parts: [{ inlineData: { data: ocrImage.data, mimeType: ocrImage.mimeType } }, { text: "Extract text Boss." }] }
       });
-      const part = res.candidates[0].content.parts.find(p => p.inlineData);
-      if (part?.inlineData) setGeneratedImage(`data:image/png;base64,${part.inlineData.data}`);
-    } catch (e) {
-      console.error("Image Generation Error:", e);
-      alert("Nano Banana module encountered an error.");
-    } finally {
-      setIsGeneratingPower(false);
-    }
+      setOcrResult(res.text || 'No text found.');
+    } catch (e) {} finally { setIsExtractingOcr(false); }
   };
 
-  return (
-    <div className="h-full w-full bg-black text-white flex flex-col relative overflow-hidden fade-in">
-      <div className="fixed inset-0 neural-glow pointer-events-none opacity-50" />
+  if (authLoading) {
+    return (
+      <div className="h-full w-full bg-black flex items-center justify-center">
+        <div className="text-white font-black tracking-[0.5em] animate-pulse uppercase text-xs">Initializing Secure Link...</div>
+      </div>
+    );
+  }
 
-      {/* CALLING UI OVERLAY */}
-      {isCalling && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center">
-           <div className="relative mb-12">
-             <div className="w-48 h-48 bg-indigo-600 rounded-full flex items-center justify-center text-7xl font-black animate-pulse shadow-[0_0_80px_rgba(99,102,241,0.5)]">
-               {callerName.charAt(0)}
-             </div>
-             <div className="absolute inset-0 rounded-full border-2 border-white/20 animate-[pulse-ring_3s_infinite]" />
-           </div>
-           <h2 className="text-4xl font-black italic uppercase mb-2 tracking-tighter">CALLING...</h2>
-           <p className="text-xl text-white/50 mb-20">{callerName}</p>
-           <button 
-             onClick={() => setIsCalling(false)} 
-             className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-2xl"
-           >
-             <span className="text-3xl font-bold">✕</span>
-           </button>
+  if (!user) {
+    return (
+      <div className="h-full w-full bg-black flex flex-col items-center justify-center p-8 fade-in relative overflow-hidden">
+        <div className="scanline"></div>
+        <div className="fixed inset-0 neural-glow opacity-30 z-0"></div>
+        <div className="z-10 text-center max-w-sm">
+          <div className="w-24 h-24 bg-white/10 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-10 shadow-[0_0_50px_rgba(99,102,241,0.2)]">
+            <span className="text-4xl font-black italic text-indigo-500">J</span>
+          </div>
+          <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">JEET SYSTEM</h1>
+          <p className="text-[10px] text-white/40 uppercase tracking-[0.3em] mb-12">Neural Interface Access Restricted</p>
+          
+          <button 
+            onClick={handleLogin}
+            className="w-full py-5 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+              <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            Sign in with Google
+          </button>
+          
+          {errorMsg && (
+            <p className="mt-6 text-red-500 text-[10px] font-black uppercase tracking-widest">{errorMsg}</p>
+          )}
         </div>
-      )}
+        <footer className="absolute bottom-10 text-[9px] text-white/20 font-black uppercase tracking-[0.5em]">
+          Jeet AI Neural Lab © 2025
+        </footer>
+      </div>
+    );
+  }
 
-      {/* HEADER */}
-      <header className="relative z-50 py-6 px-8 border-b border-white/5 flex justify-between items-center backdrop-blur-md">
-        <h1 className="text-2xl font-black italic tracking-tighter uppercase">JEET <span className="text-indigo-500">AI</span></h1>
-        
-        <div className="flex bg-white/5 p-1 rounded-full border border-white/10">
-            {['neural', 'power', 'log'].map(tab => (
-                <button 
-                  key={tab} 
-                  onClick={() => { if(tab !== 'log' && isActive) stopConversation(); setActiveTab(tab as any); }} 
-                  className={`px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-white/40 hover:text-white/70'}`}
-                >
-                    {tab === 'neural' ? 'Neural' : tab === 'power' ? 'Nano Banana' : 'History'}
-                </button>
-            ))}
+  return (
+    <div className="h-full w-full bg-black text-white flex flex-col relative overflow-hidden fade-in max-w-md mx-auto shadow-2xl border-x border-white/5">
+      <div className="fixed inset-0 neural-glow pointer-events-none opacity-20 z-0" />
+      
+      <header className="relative z-50 py-4 px-6 border-b border-white/10 flex justify-between items-center bg-black/80 backdrop-blur-xl">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-black italic uppercase tracking-tighter">JEET SYSTEM</h1>
+          <div className="text-[8px] font-black opacity-40 uppercase tracking-widest">User: {user.displayName}</div>
+        </div>
+        <div className="flex gap-2">
+            <button onClick={toggleCamera} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase border transition-all ${isCameraOn ? 'bg-indigo-600 border-indigo-400 shadow-[0_0_10px_#6366f1]' : 'bg-white/10 border-white/20'}`}>CAM {isCameraOn ? 'ON' : 'OFF'}</button>
+            <button onClick={handleLogout} className="px-3 py-1.5 bg-red-600/20 text-white text-[9px] font-black rounded-lg uppercase border border-white/20">LOGOUT</button>
         </div>
       </header>
 
-      {/* MAIN VIEWPORT */}
-      <main className="flex-1 relative z-10 p-6 flex flex-col items-center justify-center overflow-hidden">
-        
+      {errorMsg && (
+          <div className="relative z-50 bg-red-600/80 text-white text-[10px] font-black uppercase px-4 py-2 text-center animate-pulse border-b border-red-500/50">
+              {errorMsg}
+          </div>
+      )}
+
+      <nav className="relative z-50 flex gap-1 p-2 bg-white/[0.08] border-b border-white/10 overflow-x-auto no-scrollbar">
+          {(['neural', 'ocr', 'power', 'news', 'social'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 min-w-[90px] py-3 rounded-xl text-[10px] font-black uppercase transition-all duration-300 transform ${activeTab === tab ? 'bg-white text-black shadow-lg scale-105' : 'text-white hover:bg-white/20'}`}>
+                  {tab === 'neural' ? 'Voice' : tab === 'ocr' ? 'JEET OCR' : tab === 'power' ? 'Vision' : tab === 'news' ? 'Intel' : 'Owner'}
+              </button>
+          ))}
+      </nav>
+
+      <main className="flex-1 relative z-10 p-5 flex flex-col overflow-y-auto custom-scrollbar">
         {activeTab === 'neural' && (
-          <div className="w-full h-full flex flex-col items-center justify-center relative">
-            <div className="absolute inset-0 flex items-center justify-center opacity-25 pointer-events-none">
-              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-110 blur-sm" />
-            </div>
+          <div className="min-h-full flex flex-col items-center justify-center fade-in pb-20">
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-6 text-center">NEURAL LINK</h2>
             
-            <div className="relative z-20 w-80 h-80">
-              <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="normal" />
+            <div className="relative w-full aspect-square max-w-[280px] mb-6 bg-white/5 rounded-[3.5rem] overflow-hidden border border-white/10 shadow-3xl">
+              <video ref={videoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${isCameraOn ? 'opacity-80' : 'opacity-0'}`} />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="happy" />
+              </div>
+              <div className="absolute inset-0 border-[20px] border-black/40 pointer-events-none z-10" />
             </div>
 
-            <div className="mt-12 text-center relative z-30">
-               {isConnecting ? (
-                 <div className="space-y-4">
-                   <p className="text-indigo-400 font-black animate-pulse tracking-[0.3em] text-xs">ESTABLISHING NEURAL LINK...</p>
-                   <div className="w-48 h-1 bg-white/10 mx-auto rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-500 animate-[loading_1.5s_infinite]" style={{width: '30%'}} />
-                   </div>
-                 </div>
+            {isActive && (
+                <div className="w-full mb-6 max-h-32 overflow-y-auto custom-scrollbar bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 backdrop-blur-md">
+                    {transcriptions.map((t, i) => (
+                        <div key={i} className="flex flex-col gap-1 fade-in">
+                            {t.user && <p className="text-[11px] text-indigo-400 font-bold">Boss: {t.user}</p>}
+                            {t.model && <p className="text-[11px] text-white font-medium italic">Jeet: {t.model}</p>}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <div className="w-full flex flex-col gap-5">
+               {isConnecting ? ( 
+                 <p className="text-indigo-400 font-black tracking-[0.5em] text-[11px] animate-pulse text-center uppercase">SYNCHRONIZING...</p> 
                ) : isActive ? (
-                 <button onClick={stopConversation} className="px-12 py-4 bg-white text-black font-black uppercase rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all">TERMINATE LINK</button>
+                 <button onClick={stopConversation} className="w-full py-7 bg-red-600/20 border border-red-500/50 text-white font-black uppercase text-base rounded-[2rem] shadow-2xl transition-all">DISCONNECT</button>
                ) : (
-                 <button onClick={startConversation} className="px-12 py-4 bg-indigo-600 font-black uppercase rounded-full shadow-[0_0_50px_rgba(99,102,241,0.5)] hover:scale-105 active:scale-95 transition-all">INITIALIZE NEURAL LINK</button>
+                 <button onClick={startConversation} className="w-full py-7 bg-white text-black font-black uppercase text-base rounded-[2rem] shadow-2xl transition-all">START JEET AI</button>
                )}
             </div>
-            <canvas ref={canvasRef} width={320} height={240} className="hidden" />
           </div>
         )}
 
-        {activeTab === 'power' && (
-          <div className="w-full max-w-2xl flex flex-col gap-8 h-full overflow-y-auto custom-scrollbar pt-10">
-            <div className="text-center">
-              <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-2">Nano Banana <span className="text-indigo-500 text-sm">v2.5</span></h2>
-              <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Premium Image Synthesis Engine</p>
+        {activeTab === 'ocr' && (
+          <div className="flex flex-col gap-6 fade-in pb-24">
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter">JEET OCR PRO</h2>
+            <div className="bg-white/10 border border-white/20 rounded-3xl p-6 flex flex-col items-center gap-4 relative">
+                {ocrImage ? (
+                    <div className="w-full rounded-xl overflow-hidden border border-white/20 aspect-video"><img src={`data:${ocrImage.mimeType};base64,${ocrImage.data}`} className="w-full h-full object-cover" /></div>
+                ) : (
+                    <div className="w-full aspect-video bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-[11px] uppercase font-black">Upload Image</div>
+                )}
+                <div className="flex gap-2 w-full">
+                    <button onClick={() => ocrFileInputRef.current?.click()} className="flex-1 py-3.5 bg-white/20 rounded-xl font-black uppercase text-[11px]">Select</button>
+                    <button onClick={handleOcrExtraction} disabled={!ocrImage || isExtractingOcr} className="flex-[2] py-3.5 bg-white text-black rounded-xl font-black uppercase text-[11px] shadow-lg disabled:opacity-50">EXTRACT</button>
+                </div>
+                <input type="file" accept="image/*" className="hidden" ref={ocrFileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f) { const r = new FileReader(); r.onloadend = () => setOcrImage({ data: (r.result as string).split(',')[1], mimeType: f.type }); r.readAsDataURL(f); } }} />
             </div>
+            {ocrResult && <div className="bg-white/10 border border-white/20 rounded-2xl p-5"><pre className="text-[13px] leading-relaxed whitespace-pre-wrap font-sans">{ocrResult}</pre></div>}
+          </div>
+        )}
 
-            <div className="relative group">
-               <input 
-                 type="text" 
-                 value={powerPrompt}
-                 onChange={e => setPowerPrompt(e.target.value)}
-                 onKeyDown={e => e.key === 'Enter' && generateImage()}
-                 placeholder="Describe your vision, Boss..."
-                 className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-lg font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-white/20"
-               />
-               <button 
-                 onClick={generateImage}
-                 disabled={isGeneratingPower || !powerPrompt}
-                 className="absolute right-3 top-3 bottom-3 px-6 bg-indigo-600 rounded-xl font-black uppercase text-xs disabled:opacity-30 disabled:cursor-not-allowed"
-               >
-                 {isGeneratingPower ? 'SYNTHESIZING...' : 'GENERATE'}
-               </button>
+        {activeTab === 'social' && (
+          <div className="flex flex-col items-center justify-center gap-6 fade-in pb-32 pt-10">
+            <div className="bg-white/[0.1] border border-white/30 rounded-[3.5rem] p-12 flex flex-col items-center text-center shadow-3xl w-full max-w-[320px]">
+              <div className="w-28 h-28 bg-white text-black rounded-full border-8 border-white/20 flex items-center justify-center mb-10 text-4xl font-black italic shadow-2xl">J</div>
+              <h3 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">JEET BOSS</h3>
+              <p className="text-[10px] opacity-40 uppercase font-black tracking-widest mb-10">System Architect</p>
+              <a href="https://ffjeetgamer1234.blogspot.com/2025/11/jeet.html" target="_blank" className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase text-[11px] text-center shadow-xl">BOSS PHOTO</a>
             </div>
-
-            {generatedImage ? (
-              <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-white/5 animate-in zoom-in duration-700">
-                <img src={generatedImage} alt="Generated" className="w-full h-auto" />
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center border-2 border-dashed border-white/5 rounded-3xl opacity-20 italic">
-                Awaiting your prompt...
-              </div>
-            )}
           </div>
         )}
-
-        {activeTab === 'log' && (
-          <div className="w-full max-w-3xl h-full flex flex-col gap-4 overflow-y-auto custom-scrollbar px-2 py-10">
-             {logs.length === 0 ? (
-               <div className="h-full flex items-center justify-center opacity-20 italic">No neural activity logs found.</div>
-             ) : (
-               logs.map((log, i) => (
-                 <div key={i} className={`flex flex-col gap-1 ${log.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-4`}>
-                   <span className="text-[9px] font-black uppercase opacity-30 tracking-widest">{log.role === 'user' ? 'Boss' : 'Jeet AI'}</span>
-                   <div className={`px-5 py-3 rounded-2xl max-w-[85%] text-sm ${log.role === 'user' ? 'bg-indigo-600 text-indigo-100 rounded-tr-none border border-indigo-400/30 shadow-lg' : 'bg-white/5 text-white/80 rounded-tl-none border border-white/10 backdrop-blur-xl'}`}>
-                     {log.text}
-                   </div>
-                 </div>
-               ))
-             )}
-          </div>
-        )}
-
       </main>
 
-      <footer className="relative z-50 py-4 px-8 border-t border-white/5 bg-black text-[9px] font-bold text-white/20 uppercase tracking-[0.5em] text-center">
-        &copy; 2025 Jeet Private Cloud &bull; Neural Node 0x7F &bull; {isActive ? "CONNECTED" : "IDLE"}
+      <footer className="relative z-50 py-4 px-6 border-t border-white/10 bg-black/90 backdrop-blur-2xl flex justify-between items-center text-[11px] font-black tracking-widest uppercase">
+        <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-white animate-pulse" />JEET SYSTEM v20.0</div>
+        <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${isActive ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500 shadow-[0_0_10px_#ef4444]'}`} />
+            <span>{isActive ? "ACTIVE" : "STANDBY"}</span>
+        </div>
       </footer>
-      
-      <style>{`
-        @keyframes loading {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(400%); }
-        }
-      `}</style>
     </div>
   );
 };
