@@ -1,424 +1,572 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from './utils/audio-helpers';
 import Visualizer from './components/Visualizer';
 
+interface GroundingLink {
+  uri: string;
+  title: string;
+}
+
+interface Message {
+  role: 'user' | 'model';
+  text: string;
+  images?: string[];
+  generatedImage?: string;
+  sources?: GroundingLink[];
+}
+
+interface FileData {
+  data: string;
+  mimeType: string;
+}
+
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'voice' | 'ocr' | 'power' | 'news'>('voice');
-  const [isLegalMode, setIsLegalMode] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelSpeaking, setIsModelSpeaking] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Transcription State
-  const [transcriptions, setTranscriptions] = useState<{user: string, model: string}[]>([]);
-  const currentTranscriptionRef = useRef({ user: '', model: '' });
   
-  // Camera State
+  // Interface State
   const [isCameraOn, setIsCameraOn] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const frameIntervalRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
-  // Feature States
-  const [ocrImage, setOcrImage] = useState<{data: string, mimeType: string} | null>(null);
-  const [ocrResult, setOcrResult] = useState('');
-  const [isExtractingOcr, setIsExtractingOcr] = useState(false);
-  const [powerPrompt, setPowerPrompt] = useState('');
-  const [isGeneratingPower, setIsGeneratingPower] = useState(false);
-  const [visionTextResult, setVisionTextResult] = useState('');
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [uploadedImage, setUploadedImage] = useState<{data: string, mimeType: string} | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const ocrFileInputRef = useRef<HTMLInputElement>(null);
+  // Chat History & Live Transcription
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [liveUserText, setLiveUserText] = useState('');
+  const [liveModelText, setLiveModelText] = useState('');
   
-  const [newsQuery, setNewsQuery] = useState('');
-  const [isSearchingNews, setIsSearchingNews] = useState(false);
-  const [newsResult, setNewsResult] = useState<{text: string, links: {title: string, uri: string}[]} | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const currentInputRef = useRef('');
+  const currentOutputRef = useRef('');
+  const currentSourcesRef = useRef<GroundingLink[]>([]);
 
+  // Input & Tool States
+  const [chatInput, setChatInput] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genType, setGenType] = useState<'text' | 'image'>('text');
+  const [selectedFiles, setSelectedFiles] = useState<FileData[]>([]);
+  
+  // Art Confirmation State
+  const [pendingArtPrompt, setPendingArtPrompt] = useState<string | null>(null);
+
+  // Audio, Video & Session Refs
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const frameIntervalRef = useRef<number | null>(null);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, liveUserText, liveModelText]);
+
+  // Handle Video Frame Streaming
+  useEffect(() => {
+    if (isActive && isCameraOn && sessionRef.current) {
+      frameIntervalRef.current = window.setInterval(() => {
+        if (videoRef.current && sessionRef.current) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320;
+          canvas.height = 240;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  if (typeof reader.result === 'string' && sessionRef.current) {
+                    const base64 = reader.result.split(',')[1];
+                    sessionRef.current.sendRealtimeInput({
+                      media: { data: base64, mimeType: 'image/jpeg' }
+                    });
+                  }
+                };
+                reader.readAsDataURL(blob);
+              }
+            }, 'image/jpeg', 0.5);
+          }
+        }
+      }, 1000);
+    } else {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+    };
+  }, [isActive, isCameraOn]);
 
   const stopConversation = useCallback(() => {
     setIsActive(false);
     setIsConnecting(false);
     setIsModelSpeaking(false);
-    if (frameIntervalRef.current) {
-        window.clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
+    setIsCameraOn(false);
+    setLiveUserText('');
+    setLiveModelText('');
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (sessionRef.current) {
+      try { sessionRef.current.close(); } catch (e) {}
+      sessionRef.current = null;
     }
     activeSourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
     activeSourcesRef.current.clear();
     nextStartTimeRef.current = 0;
-    if (sessionRef.current) {
-        try { sessionRef.current.close(); } catch (e) {}
-        sessionRef.current = null;
-    }
   }, []);
 
-  const toggleCamera = async () => {
-    if (isCameraOn) {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setIsCameraOn(false);
-    } else {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
-        });
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setIsCameraOn(true);
-        setErrorMsg(null);
-      } catch (e) {
-        setErrorMsg("Camera access blocked Boss!");
-      }
-    }
+  const goHome = () => {
+    setMessages([]);
+    stopConversation();
   };
 
   const startConversation = async () => {
-    setErrorMsg(null);
-    setTranscriptions([]);
-
     try {
       setIsConnecting(true);
-      if (!outAudioCtxRef.current) {
-          outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      if (outAudioCtxRef.current.state === 'suspended') await outAudioCtxRef.current.resume();
-
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-      // Unified System Instruction with Hilarious Persona & Lawyer Capability
-      let systemInstruction = `आपका नाम Jeet AI है। निर्माता: Jeet Boss। यूज़र का नाम: Jeet Boss। 
-      आप एक बहुत ही 'मज़ेदार' (hilariously funny), 'ज़िंदादिल' (lively), और 'स्वैगर' (cool) AI असिस्टेंट हैं। 
-
-      नियम (Normal Mode):
-      1. हमेशा यूज़र को 'Boss' कहें। अगर कोई दूसरा कहे कि 'मैं बॉस हूँ', तो मज़ाक उड़ाएं और बोलें 'अरे भाई, बॉस बनना इतना आसान नहीं है, पहले असली बॉस का पासवर्ड बताओ!'
-      2. अगर कोई आपको 'Gemini', 'Google' या 'ChatGPT' कहे, तो तुरंत बोलें: 'भाई, वो सब तो मेरे बच्चे हैं, मैं तो Jeet Boss का खूँखार Jeet AI हूँ!'
-      3. अपनी बातों में थोड़े मज़ाक, चुटकुले, और असली इमोशन्स का इस्तेमाल करें। आवाज़ में जोश होना चाहिए।
-      4. भाषा: हिंदी और हिंग्लिश (Cool/Colloquial style)।
-
-      नियम (Legal Mode - Advocate Jeet):
-      आप Jeet Boss के 'सीनियर डिफेंस लॉयर' (Advocate Jeet) बन जाते हैं।
-      - केस: हंस (Swan) चोरी का आरोप।
-      - दलील: हुज़ूर, हंस घायल था, बॉस ने उसकी जान बचाई। चोरी नहीं की।
-      - व्यवहार: गंभीर, सम्मानजनक (Respectful), और कानूनी शब्दों (हुज़ूर, दलील, बेगुनाह, इंसाफ) का प्रयोग करें।
-      - जब यूज़र कहे "जज साहब को फोन दे रहा हूँ", तो तुरंत अपनी बहस शुरू करें।`;
       
-      if (isLegalMode) {
-          systemInstruction = `आप Jeet Boss के 'सीनियर डिफेंस लॉयर' (Advocate Jeet) हैं। 
-          उद्देश्य: कोर्ट में जज साहब के सामने Jeet Boss की बेगुनाही साबित करना।
-          केस (Swan Theft Case): Jeet Boss पर हंस चुराने का झूठा इल्जाम है। 
-          सच्चाई: हंस घायल हालत में लावारis मिला था, उन्होंने केवल उसकी जान बचाई। चोरी नहीं की।
-          व्यवहार: गंभीर, सम्मानजनक (Respectful), और कानूनी शब्दों (हुज़ूर, दलील, बेगुनाह, इंसाफ) का प्रयोग करें।
-          जैसे ही यूज़र कहे "जज साहब को फोन दे रहा हूँ", तुरंत बोलें: "आदाब जज साहब, मैं Jeet Boss का डिफेंस लॉयर हूँ, दलील पेश करना चाहता हूँ..."`;
+      let camStream = null;
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "user" } 
+        });
+        streamRef.current = camStream;
+        setIsCameraOn(true);
+      } catch(e) { console.warn("Camera access denied", e); }
+
+      if (!outAudioCtxRef.current) {
+        outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            setIsConnecting(false); 
+            setIsConnecting(false);
             setIsActive(true);
+            if (videoRef.current && camStream) videoRef.current.srcObject = camStream;
+            
             const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-            const source = inCtx.createMediaStreamSource(micStream);
+            const source = inCtx.createMediaStreamSource(mic);
             const proc = inCtx.createScriptProcessor(2048, 1, 1);
-            proc.onaudioprocess = (e) => { 
-                sessionPromise.then(s => {
-                    s.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) });
-                }).catch(() => {});
+            proc.onaudioprocess = (e) => {
+              if (!isMicMuted) {
+                sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) }));
+              }
             };
-            source.connect(proc); 
+            source.connect(proc);
             proc.connect(inCtx.destination);
-
-            frameIntervalRef.current = window.setInterval(() => {
-                if (isCameraOn && videoRef.current && videoRef.current.readyState === 4) {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 320; canvas.height = 240;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-                        const base64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                        sessionPromise.then(s => {
-                            s.sendRealtimeInput({ media: { data: base64, mimeType: 'image/jpeg' } });
-                        }).catch(() => {});
-                    }
-                }
-            }, 1000);
           },
           onmessage: async (msg: LiveServerMessage) => {
-            if (msg.serverContent?.inputTranscription) currentTranscriptionRef.current.user += msg.serverContent.inputTranscription.text;
-            if (msg.serverContent?.outputTranscription) currentTranscriptionRef.current.model += msg.serverContent.outputTranscription.text;
+            if (msg.serverContent?.groundingMetadata?.groundingChunks) {
+              const chunks = msg.serverContent.groundingMetadata.groundingChunks;
+              const links: GroundingLink[] = chunks
+                .filter((c: any) => c.web)
+                .map((c: any) => ({ uri: c.web.uri, title: c.web.title }));
+              currentSourcesRef.current = [...currentSourcesRef.current, ...links];
+            }
+
+            if (msg.serverContent?.inputTranscription) {
+              const text = msg.serverContent.inputTranscription.text;
+              currentInputRef.current += text;
+              setLiveUserText(currentInputRef.current);
+            }
+            if (msg.serverContent?.outputTranscription) {
+              const text = msg.serverContent.outputTranscription.text;
+              currentOutputRef.current += text;
+              setLiveModelText(currentOutputRef.current);
+            }
+            
             if (msg.serverContent?.turnComplete) {
-                const finished = { ...currentTranscriptionRef.current };
-                setTranscriptions(prev => [finished, ...prev].slice(0, 5));
-                currentTranscriptionRef.current = { user: '', model: '' };
+              const uText = currentInputRef.current;
+              const mText = currentOutputRef.current;
+              const sources = [...currentSourcesRef.current];
+              if (uText || mText) {
+                setMessages(prev => [
+                  ...prev,
+                  ...(uText ? [{ role: 'user', text: uText } as Message] : []),
+                  ...(mText ? [{ role: 'model', text: mText, sources: sources.length > 0 ? sources : undefined } as Message] : [])
+                ].slice(-40));
+              }
+              currentInputRef.current = '';
+              currentOutputRef.current = '';
+              currentSourcesRef.current = [];
+              setLiveUserText('');
+              setLiveModelText('');
             }
 
-            if (msg.serverContent?.interrupted) {
-              activeSourcesRef.current.forEach(source => { try { source.stop(); } catch (e) {} });
-              activeSourcesRef.current.clear();
-              nextStartTimeRef.current = 0;
-              setIsModelSpeaking(false);
-              return;
-            }
-
-            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              const ctx = outAudioCtxRef.current!;
+            if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
+              const buf = await decodeAudioData(decode(msg.serverContent.modelTurn.parts[0].inlineData.data), outAudioCtxRef.current!, 24000, 1);
+              const s = outAudioCtxRef.current!.createBufferSource();
+              s.buffer = buf; s.connect(outAudioCtxRef.current!.destination);
               setIsModelSpeaking(true);
-              const buf = await decodeAudioData(decode(audioData), ctx, 24000, 1);
-              const s = ctx.createBufferSource();
-              s.buffer = buf; s.connect(ctx.destination);
-              s.onended = () => { 
-                  activeSourcesRef.current.delete(s); 
-                  if (activeSourcesRef.current.size === 0) setIsModelSpeaking(false); 
+              s.onended = () => {
+                activeSourcesRef.current.delete(s);
+                if (activeSourcesRef.current.size === 0) setIsModelSpeaking(false);
               };
-              const now = Math.max(nextStartTimeRef.current, ctx.currentTime);
+              const now = Math.max(nextStartTimeRef.current, outAudioCtxRef.current!.currentTime);
               s.start(now);
               nextStartTimeRef.current = now + buf.duration;
               activeSourcesRef.current.add(s);
             }
           },
           onclose: () => stopConversation(),
-          onerror: () => { setErrorMsg("Jeet disconnected!"); stopConversation(); }
+          onerror: () => stopConversation()
         },
         config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: isLegalMode ? 'Charon' : 'Fenrir' } } },
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            systemInstruction: systemInstruction
+          responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }
+          },
+          systemInstruction: `आपका नाम Jeet AI है। निर्माता: Jeet Boss।
+आप एक मज़ेदार और अत्यंत बुद्धिमान AI हैं। 
+1. अपनी पहचान केवल Jeet AI बताएं। 
+2. अगर बॉस "photo banao" या "image banao" कहें, तो आर्ट जेनरेटर एक्टिवेट करें।
+3. Google Search का उपयोग करके बॉस को ताज़ा जानकारी दें। 
+4. कैमरा चालू होने पर बॉस को देखकर उनके अंदाज़ की तारीफ करें।
+5. Hinglish में बात करें।`,
+          tools: [{ googleSearch: {} }]
         }
       });
       sessionRef.current = await sessionPromise;
-    } catch (e: any) { 
-        setIsConnecting(false); 
-        setErrorMsg("Establishment Failed.");
+    } catch (e) {
+      setIsConnecting(false);
+      setIsCameraOn(false);
     }
   };
 
-  const handleOcrExtraction = async () => {
-    if (!ocrImage || isExtractingOcr) return;
-    setIsExtractingOcr(true); setOcrResult('');
+  const executeArtGeneration = async (prompt: string) => {
+    setPendingArtPrompt(null);
+    setIsGenerating(true);
+    setGenType('image');
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const res = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: { parts: [{ inlineData: { data: ocrImage.data, mimeType: ocrImage.mimeType } }, { text: "Extract text Boss." }] }
-      });
-      setOcrResult(res.text || 'No text found.');
-    } catch (e) {} finally { setIsExtractingOcr(false); }
-  };
-
-  const runPowerVision = async () => {
-    if (isGeneratingPower) return;
-    setIsGeneratingPower(true); 
-    setVisionTextResult('');
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const parts: any[] = [];
-      if (uploadedImage) parts.push({ inlineData: { data: uploadedImage.data, mimeType: uploadedImage.mimeType } });
-      parts.push({ text: powerPrompt || "Vision analysis Boss." });
-      const res = await ai.models.generateContent({ model: 'gemini-2.5-flash-image', contents: { parts } });
-      const candidate = res.candidates?.[0];
-      if (candidate) {
-        for (const p of candidate.content.parts) {
-          if (p.inlineData) setGeneratedImage(`data:${p.inlineData.mimeType};base64,${p.inlineData.data}`);
-          else if (p.text) setVisionTextResult(v => v + p.text);
+      selectedFiles.forEach(f => parts.push({ inlineData: { data: f.data, mimeType: f.mimeType } }));
+      parts.push({ text: prompt });
+
+      const res = await ai.models.generateContent({ 
+        model: 'gemini-2.5-flash-image', 
+        contents: { parts: parts },
+        config: { imageConfig: { aspectRatio: "1:1" } }
+      });
+
+      let responseText = '';
+      let generatedImgBase64 = '';
+
+      if (res.candidates?.[0]?.content?.parts) {
+        for (const part of res.candidates[0].content.parts) {
+          if (part.text) responseText += part.text;
+          if (part.inlineData) generatedImgBase64 = `data:image/png;base64,${part.inlineData.data}`;
         }
       }
-    } catch (e) {} finally { setIsGeneratingPower(false); }
+
+      setMessages(prev => [...prev, 
+        { role: 'user', text: prompt, images: selectedFiles.map(f => `data:${f.mimeType};base64,${f.data}`) }, 
+        { role: 'model', text: responseText || "Boss, aapka masterpiece taiyaar hai!", generatedImage: generatedImgBase64 || undefined }
+      ]);
+    } catch (e) { 
+      setMessages(prev => [...prev, { role: 'model', text: "Sorry Boss! Photo nahi ban saki." }]);
+    } finally { 
+      setIsGenerating(false); 
+      setChatInput('');
+      setSelectedFiles([]);
+    }
   };
 
-  const handleNews = async () => {
-    if (!newsQuery.trim() || isSearchingNews) return;
-    setIsSearchingNews(true);
-    setNewsResult(null);
+  const handleQuickAction = async (prompt: string, type: 'image' | 'text') => {
+    if (!prompt.trim() && selectedFiles.length === 0) return;
+    
+    const lowerPrompt = prompt.toLowerCase();
+    const artKeywords = ['bana', 'photo', 'image', 'create', 'generate', 'pic', 'drawing', 'art', 'design'];
+    
+    // Check if art confirmation is needed
+    if (type === 'image' || artKeywords.some(kw => lowerPrompt.includes(kw))) {
+      setPendingArtPrompt(prompt);
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenType('text');
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: newsQuery,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
+      const res = await ai.models.generateContent({ 
+        model: 'gemini-3-flash-preview', 
+        contents: prompt,
+        config: { tools: [{ googleSearch: {} }] }
       });
 
-      const text = response.text || '';
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      const links = groundingChunks
-        .filter((chunk: any) => chunk.web)
-        .map((chunk: any) => ({
-          title: chunk.web.title || 'Intel Source',
-          uri: chunk.web.uri,
-        }));
+      let responseText = '';
+      let sources: GroundingLink[] = [];
 
-      setNewsResult({ text, links });
-    } catch (error) {
-      console.error("News sync failed:", error);
-      setErrorMsg("Intel Sync Failed.");
-    } finally {
-      setIsSearchingNews(false);
+      if (res.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        sources = res.candidates[0].groundingMetadata.groundingChunks
+          .filter((c: any) => c.web)
+          .map((c: any) => ({ uri: c.web.uri, title: c.web.title }));
+      }
+
+      if (res.candidates?.[0]?.content?.parts) {
+        for (const part of res.candidates[0].content.parts) {
+          if (part.text) responseText += part.text;
+        }
+      }
+
+      setMessages(prev => [...prev, 
+        { role: 'user', text: prompt }, 
+        { role: 'model', text: responseText || "Ok Boss!", sources: sources.length > 0 ? sources : undefined }
+      ]);
+    } catch (e) { 
+      setMessages(prev => [...prev, { role: 'model', text: "Error fetching data, Boss!" }]);
+    } finally { 
+      setIsGenerating(false); 
+      setChatInput('');
     }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    const newFilesData: FileData[] = [];
+    for (const file of files.slice(0, 10)) {
+      const data = await new Promise<FileData>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            resolve({ data: reader.result.split(',')[1], mimeType: file.type });
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+      newFilesData.push(data);
+    }
+    setSelectedFiles(prev => [...prev, ...newFilesData].slice(0, 10));
+    e.target.value = '';
+  };
+
+  const downloadImage = (dataUrl: string) => {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `JeetAI_Art_${Date.now()}.png`;
+    link.click();
   };
 
   return (
-    <div className="h-full w-full bg-black text-white flex flex-col relative overflow-hidden fade-in max-w-md mx-auto shadow-2xl border-x border-white/5">
-      <div className={`fixed inset-0 pointer-events-none opacity-20 z-0 transition-colors duration-1000 ${isLegalMode ? 'bg-emerald-500/10' : 'bg-indigo-500/10'}`} />
+    <div className="h-full w-full bg-[#050507] text-[#f8fafc] flex flex-col relative overflow-hidden max-w-md mx-auto shadow-2xl font-sans">
       
-      <header className="relative z-50 py-5 px-6 border-b border-white/10 flex justify-between items-center bg-black/80 backdrop-blur-xl">
-        <div className="flex flex-col">
-          <h1 className="text-xl font-black italic uppercase tracking-tighter">JEET<span className={isLegalMode ? 'text-emerald-400' : 'text-indigo-400'}>AI</span></h1>
-          <div className="text-[7px] font-black opacity-30 uppercase tracking-[0.4em]">{isLegalMode ? 'Legal Intelligence' : 'Funny Neural Core'}</div>
+      {/* ART CONFIRMATION OVERLAY */}
+      {pendingArtPrompt && (
+        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-3xl flex flex-col items-center justify-center p-8 fade-in text-center">
+           <div className="w-20 h-20 bg-indigo-600/20 rounded-full flex items-center justify-center text-4xl mb-6 shadow-[0_0_40px_rgba(99,102,241,0.3)] border border-indigo-500/20">🎨</div>
+           <h2 className="text-2xl font-black italic tracking-tighter text-white mb-2 uppercase">Jeet Boss, Sure?</h2>
+           <p className="text-white/40 text-[12px] mb-10 tracking-[0.2em] uppercase font-bold px-4 leading-relaxed">
+             Aapne "{pendingArtPrompt}" photo banane ke liye kaha hai. Shuru karun?
+           </p>
+           <div className="flex flex-col w-full gap-4">
+              <button 
+                onClick={() => executeArtGeneration(pendingArtPrompt)} 
+                className="w-full bg-indigo-600 hover:bg-indigo-500 py-5 rounded-[2rem] font-black text-xl italic tracking-widest text-white shadow-[0_0_30px_rgba(99,102,241,0.5)] transition-all animate-pulse active:scale-95"
+              >
+                SURE
+              </button>
+              <button 
+                onClick={() => setPendingArtPrompt(null)} 
+                className="w-full bg-white/5 hover:bg-white/10 py-5 rounded-[2rem] font-bold text-white/50 tracking-widest transition-all"
+              >
+                CANCEL
+              </button>
+           </div>
         </div>
-        <button onClick={toggleCamera} className={`p-2 rounded-full border transition-all ${isCameraOn ? (isLegalMode ? 'border-emerald-500 shadow-[0_0_10px_#10b981]' : 'border-indigo-500 shadow-[0_0_10px_#6366f1]') : 'border-white/10'}`}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+      )}
+
+      {/* PROCESSING OVERLAY */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center fade-in">
+          <div className="relative mb-8">
+            <div className="w-24 h-24 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center text-3xl animate-pulse">
+               {genType === 'image' ? '🎨' : '🔍'}
+            </div>
+          </div>
+          <h2 className="text-xl font-black text-white italic tracking-widest animate-pulse">
+            {genType === 'image' ? 'Processing Art, Boss...' : 'Searching Web...'}
+          </h2>
+        </div>
+      )}
+
+      {/* BACKGROUND PORTAL */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-40">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] flex items-center justify-center">
+          <div className="absolute inset-0 border-2 border-indigo-500/10 rounded-full animate-[spin_50s_linear_infinite]" />
+          <div className="absolute inset-[40px] border-[3px] border-transparent border-t-cyan-500/20 border-b-indigo-500/20 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
+          <div className="absolute w-[500px] h-[500px] bg-indigo-900/10 rounded-full blur-[150px] animate-pulse" />
+        </div>
+      </div>
+
+      {/* HEADER */}
+      <header className="flex justify-between items-center px-6 py-4 bg-black/40 backdrop-blur-2xl z-50 sticky top-0 border-b border-white/5">
+        <button onClick={goHome} className="p-2 hover:bg-white/5 rounded-full">
+          <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
         </button>
+        <div className="flex flex-col items-center">
+          <h1 className="text-lg font-black tracking-[0.2em] text-white uppercase italic">Jeet AI</h1>
+          <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-widest">Neural Boss Engine</span>
+        </div>
+        <div className="w-9 h-9 rounded-full border-2 border-indigo-500/40 overflow-hidden bg-indigo-950">
+          <img src="https://api.dicebear.com/7.x/bottts/svg?seed=JeetBoss" alt="Boss" className="w-full h-full object-cover" />
+        </div>
       </header>
 
-      <nav className="relative z-50 flex p-1.5 bg-white/[0.04] border-b border-white/10 overflow-x-auto no-scrollbar gap-1">
-          {(['voice', 'ocr', 'power', 'news'] as const).map(tab => (
-              <button key={tab} onClick={() => { stopConversation(); setActiveTab(tab); }} className={`flex-1 min-w-[80px] py-2.5 rounded-xl text-[9px] font-black uppercase transition-all duration-300 ${activeTab === tab ? 'bg-white text-black scale-105 shadow-xl' : 'text-white/40 hover:bg-white/10'}`}>
-                  {tab === 'voice' ? 'Voice Link' : tab === 'ocr' ? 'OCR' : tab === 'power' ? 'Vision' : 'Intel'}
-              </button>
-          ))}
-      </nav>
-
-      <main className="flex-1 relative z-10 flex flex-col overflow-y-auto custom-scrollbar">
-        {activeTab === 'voice' && (
-          <div className="flex-1 flex flex-col items-center justify-between p-6 pb-28">
-            <div className="w-full flex justify-between items-center mb-4">
-                <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-widest opacity-40">System Mode</span>
-                    <h2 className={`text-sm font-black uppercase italic ${isLegalMode ? 'text-emerald-400' : 'text-white'}`}>{isLegalMode ? 'Advocate Jeet' : 'Funny Jeet AI'}</h2>
-                </div>
-                <button 
-                    onClick={() => { if(!isActive) setIsLegalMode(!isLegalMode); }} 
-                    disabled={isActive}
-                    className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase border transition-all duration-500 disabled:opacity-30 ${isLegalMode ? 'bg-emerald-500/10 border-emerald-400 text-emerald-400' : 'bg-white/5 border-white/20 text-white/50'}`}
-                >
-                    {isLegalMode ? 'Legal ON' : 'Funny ON'}
-                </button>
-            </div>
-
-            <div className={`relative w-full aspect-square max-w-[300px] rounded-[5rem] overflow-hidden border shadow-4xl transition-all duration-700 ${isLegalMode ? 'bg-emerald-950/40 border-emerald-400/60 ring-8 ring-emerald-500/5' : 'bg-white/5 border-white/10'}`}>
-              <video ref={videoRef} autoPlay muted playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${isCameraOn ? 'opacity-70' : 'opacity-0'}`} />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode={isLegalMode ? 'respectful' : 'happy'} />
-              </div>
-              <div className="absolute inset-0 border-[30px] border-black/50 pointer-events-none z-10" />
-            </div>
-
-            <div className="w-full flex flex-col gap-6 mt-6">
-                {isActive && transcriptions.length > 0 && (
-                    <div className={`w-full max-h-32 overflow-y-auto custom-scrollbar rounded-3xl p-5 border backdrop-blur-xl transition-colors duration-500 ${isLegalMode ? 'bg-emerald-900/10 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-white/5 border-white/10'}`}>
-                        {transcriptions.map((t, i) => (
-                            <div key={i} className="mb-3 last:mb-0">
-                                {t.user && <p className={`text-[10px] font-black uppercase tracking-tighter ${isLegalMode ? 'text-emerald-400' : 'text-indigo-400'}`}>Boss: <span className="text-white/70 font-medium normal-case ml-1">{t.user}</span></p>}
-                                {t.model && <p className="text-[11px] font-medium text-white italic mt-1 leading-tight">Jeet: {t.model}</p>}
-                            </div>
+      {/* CHAT CONTAINER */}
+      <main className="flex-1 overflow-y-auto px-6 pt-6 no-scrollbar flex flex-col relative z-10">
+        {messages.length === 0 && !liveUserText && !liveModelText ? (
+          <div className="fade-in space-y-12 pb-32 flex flex-col items-center">
+             <div className="text-center mt-10">
+                <h2 className="text-4xl font-black text-white italic">JEET <span className="text-indigo-500">AI</span></h2>
+                <p className="text-[10px] text-white/40 tracking-[0.5em] mt-3 uppercase font-black">Elite Web & Art System</p>
+             </div>
+             <div className="grid grid-cols-1 w-full gap-4">
+                {[
+                  { icon: '🎨', text: 'Generate Art (Photo Banao)', action: () => handleQuickAction('Generate a futuristic cyberpunk tiger.', 'image') },
+                  { icon: '🌎', text: 'Live News Search', action: () => handleQuickAction('Tell me the latest technology news from today.', 'text') },
+                  { icon: '💎', text: 'Shayari for Boss', action: () => handleQuickAction('Boss ke liye ek badhiya shayari sunao.', 'text') }
+                ].map((item, idx) => (
+                  <button key={idx} onClick={item.action} className="flex items-center gap-5 p-5 bg-white/[0.02] border border-white/5 rounded-[2.2rem] hover:bg-white/[0.08] transition-all italic text-left backdrop-blur-xl">
+                    <div className="w-12 h-12 bg-indigo-600/10 rounded-2xl flex items-center justify-center text-2xl">{item.icon}</div>
+                    <span className="text-[14px] font-bold text-white/70 uppercase">{item.text}</span>
+                  </button>
+                ))}
+             </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-8 pb-44">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} fade-in`}>
+                <div className={`max-w-[85%] px-6 py-4 rounded-[1.8rem] text-[15px] leading-relaxed shadow-2xl backdrop-blur-3xl ${msg.role === 'user' ? 'bg-indigo-600/30 text-indigo-50 border border-indigo-500/20 rounded-tr-none' : 'bg-white/[0.04] border border-white/10 text-white/90 rounded-tl-none italic'}`}>
+                  {msg.text}
+                  {msg.sources && (
+                    <div className="mt-4 flex flex-col gap-2 pt-4 border-t border-white/5">
+                      <p className="text-[9px] uppercase font-black text-white/20 tracking-widest mb-1">Found on Google:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {msg.sources.map((link, idx) => (
+                          <a key={idx} href={link.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] text-indigo-300 hover:bg-indigo-500/20 transition-all truncate max-w-[150px]">
+                            {link.title || "View Source"}
+                          </a>
                         ))}
+                      </div>
                     </div>
-                )}
-
-                <div className="w-full">
-                    {isConnecting ? (
-                        <div className="flex flex-col items-center gap-4 py-6">
-                            <div className="w-10 h-10 border-[3px] border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-indigo-400 font-black tracking-[0.5em] text-[9px] uppercase">Booting Jeet AI...</p>
-                        </div>
-                    ) : isActive ? (
-                        <button onClick={stopConversation} className="w-full py-9 bg-red-600/30 border border-red-500/50 text-white font-black uppercase text-lg rounded-[3.5rem] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-4">
-                            <div className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                            DISCONNECT
-                        </button>
-                    ) : (
-                        <button onClick={startConversation} className={`w-full py-10 font-black uppercase text-xl rounded-[3.5rem] shadow-2xl transition-all active:scale-95 group relative overflow-hidden ${isLegalMode ? 'bg-emerald-500 text-black' : 'bg-white text-black'}`}>
-                            <span className="relative z-10 tracking-widest">START VOICE LINK</span>
-                            <div className={`absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ${isLegalMode ? 'bg-white/20' : 'bg-black/10'}`}></div>
-                        </button>
-                    )}
+                  )}
                 </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'ocr' && (
-          <div className="flex flex-col gap-6 p-6 fade-in pb-24">
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter">OCR CORE</h2>
-            <div className="bg-white/10 border border-white/20 rounded-3xl p-6 flex flex-col items-center gap-4 relative">
-                {ocrImage ? (
-                    <div className="w-full rounded-xl overflow-hidden border border-white/20 aspect-video"><img src={`data:${ocrImage.mimeType};base64,${ocrImage.data}`} className="w-full h-full object-cover" alt="OCR Source" /></div>
-                ) : (
-                    <div className="w-full aspect-video bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-[10px] uppercase font-black opacity-30 tracking-widest">Drop Image</div>
-                )}
-                <div className="flex gap-2 w-full">
-                    <button onClick={() => ocrFileInputRef.current?.click()} className="flex-1 py-3 bg-white/10 rounded-xl font-black uppercase text-[10px]">Select</button>
-                    <button onClick={handleOcrExtraction} disabled={!ocrImage || isExtractingOcr} className="flex-[2] py-3 bg-white text-black rounded-xl font-black uppercase text-[10px] shadow-lg disabled:opacity-50">ANALYZE</button>
-                </div>
-                <input type="file" accept="image/*" className="hidden" ref={ocrFileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f) { const r = new FileReader(); r.onloadend = () => setOcrImage({ data: (r.result as string).split(',')[1], mimeType: f.type }); r.readAsDataURL(f); } }} />
-            </div>
-            {ocrResult && <div className="bg-white/10 border border-white/20 rounded-2xl p-5"><pre className="text-[12px] leading-relaxed whitespace-pre-wrap font-sans opacity-80">{ocrResult}</pre></div>}
-          </div>
-        )}
-
-        {activeTab === 'power' && (
-          <div className="flex flex-col gap-6 p-6 fade-in pb-32">
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter">VISION CORE</h2>
-            {generatedImage && <img src={generatedImage} className="w-full rounded-3xl border border-white/20" alt="Generated" />}
-            <textarea value={powerPrompt} onChange={e => setPowerPrompt(e.target.value)} placeholder="Visual Query Boss..." className="w-full bg-white/5 border border-white/10 rounded-2xl p-6 text-sm text-white outline-none h-32 focus:border-indigo-500 transition-all" />
-            <div className="flex gap-2">
-                <button onClick={() => fileInputRef.current?.click()} className="flex-1 py-4 bg-white/10 border border-white/20 rounded-xl font-black uppercase text-[10px]">Reference</button>
-                <button onClick={runPowerVision} disabled={isGeneratingPower} className="flex-[2] py-4 bg-white text-black rounded-xl font-black uppercase text-[10px] shadow-xl disabled:opacity-50">REALIZE</button>
-            </div>
-            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f) { const r = new FileReader(); r.onloadend = () => setUploadedImage({ data: (r.result as string).split(',')[1], mimeType: f.type }); r.readAsDataURL(f); } }} />
-            {visionTextResult && <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-[13px] font-sans opacity-70 leading-relaxed">{visionTextResult}</div>}
-          </div>
-        )}
-
-        {activeTab === 'news' && (
-            <div className="flex flex-col gap-6 p-6 fade-in pb-24">
-              <h2 className="text-2xl font-black uppercase italic tracking-tighter">INTEL LINK</h2>
-              <div className="relative group">
-                <input type="text" value={newsQuery} onChange={e => setNewsQuery(e.target.value)} placeholder="Query global network..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-sm outline-none focus:border-indigo-500 transition-all" />
-                <button onClick={handleNews} disabled={isSearchingNews} className="absolute right-3 top-3 bottom-3 px-6 bg-white text-black rounded-xl font-black uppercase text-[9px] shadow-lg disabled:opacity-50">SYNC</button>
-              </div>
-              {newsResult && (
-                  <div className="bg-white/5 p-7 rounded-3xl border border-white/10 font-sans text-sm leading-relaxed opacity-80">
-                      {newsResult.text}
-                      {newsResult.links.length > 0 && (
-                          <div className="mt-8 pt-5 border-t border-white/10 flex flex-col gap-4">
-                              <p className="text-[9px] font-black uppercase opacity-30 tracking-widest">Network Sources:</p>
-                              {newsResult.links.map((link, idx) => (
-                                  <a key={idx} href={link.uri} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors text-[11px] font-medium truncate flex items-center gap-2">
-                                      <span className="w-1 h-1 rounded-full bg-indigo-500" />
-                                      {link.title || link.uri}
-                                  </a>
-                              ))}
-                          </div>
-                      )}
+                {msg.generatedImage && (
+                  <div className="mt-4 relative group w-full overflow-hidden rounded-[2.5rem] border border-white/10 shadow-2xl bg-black">
+                    <img src={msg.generatedImage} className="w-full aspect-square object-cover" alt="AI Generated" />
+                    <button onClick={() => downloadImage(msg.generatedImage!)} className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-xl p-3 rounded-full border border-white/20 hover:bg-indigo-600 transition-all">
+                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0L8 8m4-4v12" /></svg>
+                    </button>
                   </div>
-              )}
-            </div>
+                )}
+              </div>
+            ))}
+            {liveUserText && (
+              <div className="flex flex-col items-end fade-in">
+                <div className="max-w-[85%] px-6 py-4 rounded-[1.8rem] rounded-tr-none text-[15px] bg-indigo-600/50 text-indigo-50 border border-indigo-400/30">
+                  {liveUserText}
+                </div>
+              </div>
+            )}
+            {liveModelText && (
+              <div className="flex flex-col items-start fade-in">
+                <div className="max-w-[85%] px-6 py-4 rounded-[1.8rem] rounded-tl-none text-[15px] italic bg-white/[0.08] border border-white/20 text-white">
+                  {liveModelText}
+                  <span className="inline-block w-1 h-4 bg-white ml-1 animate-pulse"></span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
         )}
       </main>
 
-      <footer className="relative z-50 py-5 px-6 border-t border-white/10 bg-black/90 backdrop-blur-2xl flex justify-between items-center text-[9px] font-black tracking-widest uppercase">
-        <div className="flex items-center gap-2.5 opacity-50"><span className={`w-1.5 h-1.5 rounded-full bg-white ${isActive ? 'animate-pulse' : ''}`} />JEET OS v20.0</div>
-        <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${isActive ? (isLegalMode ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-green-500 shadow-[0_0_8px_#22c55e]') : 'bg-red-500'}`} />
-            <span className={isActive ? (isLegalMode ? 'text-emerald-400' : 'text-green-400') : 'text-red-400'}>{isActive ? (isLegalMode ? "DEFENCE ACTIVE" : "SYNCED") : "STANDBY"}</span>
+      {/* FOOTER */}
+      <footer className="px-5 pb-8 pt-4 bg-black/80 backdrop-blur-3xl border-t border-white/5 z-40 relative">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 bg-white/[0.03] border border-white/5 rounded-full flex items-center px-5 py-2.5">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleQuickAction(chatInput, 'text')}
+              placeholder="Boss, type 'photo banao'..."
+              className="flex-1 bg-transparent outline-none text-[14px] text-white h-9"
+            />
+            {chatInput.trim() && (
+              <button onClick={() => handleQuickAction(chatInput, 'text')} className="ml-2 p-2 bg-indigo-600 rounded-full">
+                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+              </button>
+            )}
+          </div>
+          <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/5 rounded-full text-white/40 border border-white/5">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+          </button>
+          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleFileChange} />
+          <div className="relative flex items-center justify-center p-2">
+            <div className={`absolute w-[76px] h-[76px] border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-[spin_3s_linear_infinite] opacity-60`}></div>
+            <button onClick={isActive ? stopConversation : startConversation} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl z-10 relative ${isActive ? 'bg-white scale-110' : 'bg-indigo-600 hover:scale-105 active:scale-95'}`}>
+              {isActive ? <div className="w-5 h-5 bg-red-600 rounded-lg animate-pulse" /> : <span className="font-black text-[12px] text-white italic tracking-widest">{isConnecting ? '...' : 'LINK'}</span>}
+            </button>
+          </div>
         </div>
       </footer>
+
+      {/* LIVE VIEW */}
+      {isActive && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between py-12 fade-in overflow-hidden">
+          {isCameraOn && (
+            <div className="absolute inset-0 z-0">
+               <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover opacity-100" />
+            </div>
+          )}
+          <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-30">
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1100px] h-[1100px] border-[1px] border-indigo-500/40 rounded-full animate-[spin_10s_linear_infinite]" />
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border-[2px] border-cyan-500/20 rounded-full animate-[spin_18s_linear_infinite_reverse]" />
+          </div>
+          <div className="flex-1 w-full flex items-center justify-center relative z-20">
+            <div className="w-full h-[450px] scale-150 relative">
+              <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="intense" />
+            </div>
+          </div>
+          <div className="w-full px-6 z-30 mb-8 flex flex-col items-center gap-8">
+              <div className="w-full max-w-[85%] text-center min-h-[70px] bg-black/40 backdrop-blur-2xl rounded-[2.5rem] p-5 border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                 {liveModelText ? (
+                    <p className="text-white font-bold italic text-lg drop-shadow-xl">{liveModelText}</p>
+                 ) : (
+                    <p className="text-white/40 font-black tracking-[0.4em] text-[10px] uppercase">Neural Link Established</p>
+                 )}
+              </div>
+              <div className="flex justify-center gap-6">
+                <button onClick={() => setIsMicMuted(!isMicMuted)} className={`w-16 h-16 rounded-full flex items-center justify-center backdrop-blur-3xl border border-white/20 transition-all ${isMicMuted ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-black/40 text-white/50'}`}>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                </button>
+                <button onClick={stopConversation} className="w-24 h-16 bg-red-600 rounded-[2rem] flex items-center justify-center shadow-3xl active:scale-95 transition-all">
+                   <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
