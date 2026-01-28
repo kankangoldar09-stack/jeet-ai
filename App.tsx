@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { createBlob, decode, decodeAudioData } from './utils/audio-helpers';
 import Visualizer from './components/Visualizer';
 
-interface GroundingLink {
-  uri: string;
-  title: string;
+interface SelectedFile {
+  data: string;
+  mimeType: string;
+  url: string;
 }
 
 interface Message {
@@ -13,201 +14,64 @@ interface Message {
   text: string;
   images?: string[];
   generatedImage?: string;
-  sources?: GroundingLink[];
-}
-
-interface FileData {
-  data: string;
-  mimeType: string;
 }
 
 const App: React.FC = () => {
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelSpeaking, setIsModelSpeaking] = useState(false);
-  
-  // Interface State
-  const [isCameraOn, setIsCameraOn] = useState(false);
-  const [isMicMuted, setIsMicMuted] = useState(false);
-
-  // Chat History & Live Transcription
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [liveUserText, setLiveUserText] = useState('');
-  const [liveModelText, setLiveModelText] = useState('');
-  
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const currentInputRef = useRef('');
-  const currentOutputRef = useRef('');
-  const currentSourcesRef = useRef<GroundingLink[]>([]);
-
-  // Input & Tool States
   const [chatInput, setChatInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [genType, setGenType] = useState<'text' | 'image'>('text');
-  const [selectedFiles, setSelectedFiles] = useState<FileData[]>([]);
-  
-  // Art Confirmation State
-  const [pendingArtPrompt, setPendingArtPrompt] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // Audio, Video & Session Refs
   const outAudioCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const frameIntervalRef = useRef<number | null>(null);
 
-  // Auto-scroll chat
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, liveUserText, liveModelText]);
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  // Handle Video Frame Streaming
-  useEffect(() => {
-    if (isActive && isCameraOn && sessionRef.current) {
-      frameIntervalRef.current = window.setInterval(() => {
-        if (videoRef.current && sessionRef.current) {
-          const canvas = document.createElement('canvas');
-          canvas.width = 320;
-          canvas.height = 240;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob((blob) => {
-              if (blob) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  if (typeof reader.result === 'string' && sessionRef.current) {
-                    const base64 = reader.result.split(',')[1];
-                    sessionRef.current.sendRealtimeInput({
-                      media: { data: base64, mimeType: 'image/jpeg' }
-                    });
-                  }
-                };
-                reader.readAsDataURL(blob);
-              }
-            }, 'image/jpeg', 0.5);
-          }
-        }
-      }, 1000);
-    } else {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
-      }
-    }
-    return () => {
-      if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
-    };
-  }, [isActive, isCameraOn]);
-
-  const stopConversation = useCallback(() => {
+  const stopSession = useCallback(() => {
     setIsActive(false);
     setIsConnecting(false);
     setIsModelSpeaking(false);
-    setIsCameraOn(false);
-    setLiveUserText('');
-    setLiveModelText('');
-    
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    if (sessionRef.current) {
-      try { sessionRef.current.close(); } catch (e) {}
-      sessionRef.current = null;
-    }
-    activeSourcesRef.current.forEach(s => { try { s.stop(); } catch (e) {} });
+    if (sessionRef.current) { try { sessionRef.current.close(); } catch(e){} sessionRef.current = null; }
+    activeSourcesRef.current.forEach(s => s.stop());
     activeSourcesRef.current.clear();
     nextStartTimeRef.current = 0;
   }, []);
 
-  const goHome = () => {
-    setMessages([]);
-    stopConversation();
-  };
-
-  const startConversation = async () => {
+  const startLiveSession = async () => {
     try {
       setIsConnecting(true);
-      
-      let camStream = null;
-      try {
-        camStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "user" } 
-        });
-        streamRef.current = camStream;
-        setIsCameraOn(true);
-      } catch(e) { console.warn("Camera access denied", e); }
-
-      if (!outAudioCtxRef.current) {
-        outAudioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      outAudioCtxRef.current = outAudioCtxRef.current || new AudioContext({ sampleRate: 24000 });
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-
+      
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
             setIsConnecting(false);
             setIsActive(true);
-            if (videoRef.current && camStream) videoRef.current.srcObject = camStream;
-            
-            const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            const inCtx = new AudioContext({ sampleRate: 16000 });
             const source = inCtx.createMediaStreamSource(mic);
-            const proc = inCtx.createScriptProcessor(2048, 1, 1);
+            const proc = inCtx.createScriptProcessor(4096, 1, 1);
             proc.onaudioprocess = (e) => {
-              if (!isMicMuted) {
-                sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) }));
-              }
+              if (sessionRef.current) sessionRef.current.sendRealtimeInput({ media: createBlob(e.inputBuffer.getChannelData(0)) });
             };
-            source.connect(proc);
-            proc.connect(inCtx.destination);
+            source.connect(proc); proc.connect(inCtx.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
-            if (msg.serverContent?.groundingMetadata?.groundingChunks) {
-              const chunks = msg.serverContent.groundingMetadata.groundingChunks;
-              const links: GroundingLink[] = chunks
-                .filter((c: any) => c.web)
-                .map((c: any) => ({ uri: c.web.uri, title: c.web.title }));
-              currentSourcesRef.current = [...currentSourcesRef.current, ...links];
-            }
-
-            if (msg.serverContent?.inputTranscription) {
-              const text = msg.serverContent.inputTranscription.text;
-              currentInputRef.current += text;
-              setLiveUserText(currentInputRef.current);
-            }
-            if (msg.serverContent?.outputTranscription) {
-              const text = msg.serverContent.outputTranscription.text;
-              currentOutputRef.current += text;
-              setLiveModelText(currentOutputRef.current);
-            }
-            
-            if (msg.serverContent?.turnComplete) {
-              const uText = currentInputRef.current;
-              const mText = currentOutputRef.current;
-              const sources = [...currentSourcesRef.current];
-              if (uText || mText) {
-                setMessages(prev => [
-                  ...prev,
-                  ...(uText ? [{ role: 'user', text: uText } as Message] : []),
-                  ...(mText ? [{ role: 'model', text: mText, sources: sources.length > 0 ? sources : undefined } as Message] : [])
-                ].slice(-40));
-              }
-              currentInputRef.current = '';
-              currentOutputRef.current = '';
-              currentSourcesRef.current = [];
-              setLiveUserText('');
-              setLiveModelText('');
-            }
-
-            if (msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-              const buf = await decodeAudioData(decode(msg.serverContent.modelTurn.parts[0].inlineData.data), outAudioCtxRef.current!, 24000, 1);
+            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData) {
+              const buf = await decodeAudioData(decode(audioData), outAudioCtxRef.current!, 24000, 1);
               const s = outAudioCtxRef.current!.createBufferSource();
               s.buffer = buf; s.connect(outAudioCtxRef.current!.destination);
               setIsModelSpeaking(true);
@@ -221,349 +85,302 @@ const App: React.FC = () => {
               activeSourcesRef.current.add(s);
             }
           },
-          onclose: () => stopConversation(),
-          onerror: () => stopConversation()
+          onclose: () => stopSession(),
+          onerror: () => stopSession()
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }
-          },
-          systemInstruction: `आपका नाम Jeet AI है। निर्माता: Jeet Boss।
-आप एक मज़ेदार और अत्यंत बुद्धिमान AI हैं। 
-1. अपनी पहचान केवल Jeet AI बताएं। 
-2. अगर बॉस "photo banao" या "image banao" कहें, तो आर्ट जेनरेटर एक्टिवेट करें।
-3. Google Search का उपयोग करके बॉस को ताज़ा जानकारी दें। 
-4. कैमरा चालू होने पर बॉस को देखकर उनके अंदाज़ की तारीफ करें।
-5. Hinglish में बात करें।`,
-          tools: [{ googleSearch: {} }]
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Fenrir' } } },
+          systemInstruction: "आपका नाम Jeet AI है। आप एक मजेदार और वफादार सहायक हैं। Fenrir आवाज का उपयोग करें। Hinglish में बात करें। आप हर तरह की मदद कर सकते हैं, जैसे फोटो देखना, जानकारी ढूँढना या बस गप्पे मारना।",
         }
       });
       sessionRef.current = await sessionPromise;
-    } catch (e) {
-      setIsConnecting(false);
-      setIsCameraOn(false);
-    }
+    } catch (e) { stopSession(); }
   };
 
-  const executeArtGeneration = async (prompt: string) => {
-    setPendingArtPrompt(null);
+  const handleAction = async () => {
+    if (!chatInput.trim() && selectedFiles.length === 0) return;
     setIsGenerating(true);
-    setGenType('image');
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
+    // Check if user wants to generate an image
+    const imageKeywords = ['banao', 'make', 'create', 'generate', 'photo', 'image', 'picture', 'chitra', 'drawing', 'art', 'dikhao', 'paint'];
+    const isImageRequest = imageKeywords.some(key => chatInput.toLowerCase().includes(key));
+    const shouldUseImageModel = selectedFiles.length > 0 || isImageRequest;
+
     try {
-      const parts: any[] = [];
-      selectedFiles.forEach(f => parts.push({ inlineData: { data: f.data, mimeType: f.mimeType } }));
-      parts.push({ text: prompt });
+      const model = shouldUseImageModel ? 'gemini-2.5-flash-image' : 'gemini-3-flash-preview';
+      const contents: any[] = [];
+      
+      selectedFiles.forEach(file => {
+        contents.push({ inlineData: { data: file.data, mimeType: file.mimeType } });
+      });
+      
+      contents.push({ text: chatInput || (shouldUseImageModel ? "Create an epic full-screen high-quality visual masterpiece." : "Hello") });
+
+      const config: any = shouldUseImageModel 
+        ? { imageConfig: { aspectRatio: "1:1" } } 
+        : { tools: [{ googleSearch: {} }] };
 
       const res = await ai.models.generateContent({ 
-        model: 'gemini-2.5-flash-image', 
-        contents: { parts: parts },
-        config: { imageConfig: { aspectRatio: "1:1" } }
+        model, 
+        contents: { parts: contents }, 
+        config 
       });
 
-      let responseText = '';
-      let generatedImgBase64 = '';
-
+      let text = '';
+      let generatedImg = '';
       if (res.candidates?.[0]?.content?.parts) {
-        for (const part of res.candidates[0].content.parts) {
-          if (part.text) responseText += part.text;
-          if (part.inlineData) generatedImgBase64 = `data:image/png;base64,${part.inlineData.data}`;
+        for (const p of res.candidates[0].content.parts) {
+          if (p.text) text += p.text;
+          if (p.inlineData) generatedImg = `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
         }
       }
 
       setMessages(prev => [...prev, 
-        { role: 'user', text: prompt, images: selectedFiles.map(f => `data:${f.mimeType};base64,${f.data}`) }, 
-        { role: 'model', text: responseText || "Boss, aapka masterpiece taiyaar hai!", generatedImage: generatedImgBase64 || undefined }
+        { 
+          role: 'user', 
+          text: chatInput, 
+          images: selectedFiles.map(f => f.url) 
+        }, 
+        { 
+          role: 'model', 
+          text: text || (generatedImg ? "Boss, ye rahi aapki full visual output!" : "Neural processing complete!"),
+          generatedImage: generatedImg || undefined
+        }
       ]);
-    } catch (e) { 
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry Boss! Photo nahi ban saki." }]);
-    } finally { 
-      setIsGenerating(false); 
+      
       setChatInput('');
       setSelectedFiles([]);
-    }
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => [...prev, { role: 'model', text: "Neural synthesis fail ho gaya. Kripya phir se koshish karein." }]);
+    } finally { setIsGenerating(false); }
   };
 
-  const handleQuickAction = async (prompt: string, type: 'image' | 'text') => {
-    if (!prompt.trim() && selectedFiles.length === 0) return;
-    
-    const lowerPrompt = prompt.toLowerCase();
-    const artKeywords = ['bana', 'photo', 'image', 'create', 'generate', 'pic', 'drawing', 'art', 'design'];
-    
-    // Check if art confirmation is needed
-    if (type === 'image' || artKeywords.some(kw => lowerPrompt.includes(kw))) {
-      setPendingArtPrompt(prompt);
-      return;
-    }
-
-    setIsGenerating(true);
-    setGenType('text');
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    try {
-      const res = await ai.models.generateContent({ 
-        model: 'gemini-3-flash-preview', 
-        contents: prompt,
-        config: { tools: [{ googleSearch: {} }] }
-      });
-
-      let responseText = '';
-      let sources: GroundingLink[] = [];
-
-      if (res.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-        sources = res.candidates[0].groundingMetadata.groundingChunks
-          .filter((c: any) => c.web)
-          .map((c: any) => ({ uri: c.web.uri, title: c.web.title }));
-      }
-
-      if (res.candidates?.[0]?.content?.parts) {
-        for (const part of res.candidates[0].content.parts) {
-          if (part.text) responseText += part.text;
-        }
-      }
-
-      setMessages(prev => [...prev, 
-        { role: 'user', text: prompt }, 
-        { role: 'model', text: responseText || "Ok Boss!", sources: sources.length > 0 ? sources : undefined }
-      ]);
-    } catch (e) { 
-      setMessages(prev => [...prev, { role: 'model', text: "Error fetching data, Boss!" }]);
-    } finally { 
-      setIsGenerating(false); 
-      setChatInput('');
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
-    const newFilesData: FileData[] = [];
-    for (const file of files.slice(0, 10)) {
-      const data = await new Promise<FileData>((resolve) => {
+    if (files.length > 0) {
+      files.forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
-          if (typeof reader.result === 'string') {
-            resolve({ data: reader.result.split(',')[1], mimeType: file.type });
-          }
+          setSelectedFiles(prev => [...prev, {
+            data: (reader.result as string).split(',')[1],
+            mimeType: file.type,
+            url: URL.createObjectURL(file)
+          }]);
         };
         reader.readAsDataURL(file);
       });
-      newFilesData.push(data);
     }
-    setSelectedFiles(prev => [...prev, ...newFilesData].slice(0, 10));
-    e.target.value = '';
+    // RESET: Crucial fix for repeating file selection
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
-  const downloadImage = (dataUrl: string) => {
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => {
+      const newFiles = [...prev];
+      URL.revokeObjectURL(newFiles[index].url);
+      newFiles.splice(index, 1);
+      return newFiles;
+    });
+  };
+
+  const downloadImage = (base64Data: string) => {
     const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = `JeetAI_Art_${Date.now()}.png`;
+    link.href = base64Data;
+    link.download = `JeetAI-Neural-Art-${Date.now()}.png`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="h-full w-full bg-[#050507] text-[#f8fafc] flex flex-col relative overflow-hidden max-w-md mx-auto shadow-2xl font-sans">
-      
-      {/* ART CONFIRMATION OVERLAY */}
-      {pendingArtPrompt && (
-        <div className="fixed inset-0 z-[300] bg-black/90 backdrop-blur-3xl flex flex-col items-center justify-center p-8 fade-in text-center">
-           <div className="w-20 h-20 bg-indigo-600/20 rounded-full flex items-center justify-center text-4xl mb-6 shadow-[0_0_40px_rgba(99,102,241,0.3)] border border-indigo-500/20">🎨</div>
-           <h2 className="text-2xl font-black italic tracking-tighter text-white mb-2 uppercase">Jeet Boss, Sure?</h2>
-           <p className="text-white/40 text-[12px] mb-10 tracking-[0.2em] uppercase font-bold px-4 leading-relaxed">
-             Aapne "{pendingArtPrompt}" photo banane ke liye kaha hai. Shuru karun?
-           </p>
-           <div className="flex flex-col w-full gap-4">
-              <button 
-                onClick={() => executeArtGeneration(pendingArtPrompt)} 
-                className="w-full bg-indigo-600 hover:bg-indigo-500 py-5 rounded-[2rem] font-black text-xl italic tracking-widest text-white shadow-[0_0_30px_rgba(99,102,241,0.5)] transition-all animate-pulse active:scale-95"
-              >
-                SURE
-              </button>
-              <button 
-                onClick={() => setPendingArtPrompt(null)} 
-                className="w-full bg-white/5 hover:bg-white/10 py-5 rounded-[2rem] font-bold text-white/50 tracking-widest transition-all"
-              >
-                CANCEL
-              </button>
-           </div>
-        </div>
-      )}
-
-      {/* PROCESSING OVERLAY */}
-      {isGenerating && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center fade-in">
-          <div className="relative mb-8">
-            <div className="w-24 h-24 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center text-3xl animate-pulse">
-               {genType === 'image' ? '🎨' : '🔍'}
-            </div>
-          </div>
-          <h2 className="text-xl font-black text-white italic tracking-widest animate-pulse">
-            {genType === 'image' ? 'Processing Art, Boss...' : 'Searching Web...'}
-          </h2>
-        </div>
-      )}
-
-      {/* BACKGROUND PORTAL */}
-      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden opacity-40">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] flex items-center justify-center">
-          <div className="absolute inset-0 border-2 border-indigo-500/10 rounded-full animate-[spin_50s_linear_infinite]" />
-          <div className="absolute inset-[40px] border-[3px] border-transparent border-t-cyan-500/20 border-b-indigo-500/20 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
-          <div className="absolute w-[500px] h-[500px] bg-indigo-900/10 rounded-full blur-[150px] animate-pulse" />
-        </div>
-      </div>
-
+    <div className="h-full w-full flex flex-col overflow-hidden bg-black selection:bg-indigo-500 selection:text-white">
       {/* HEADER */}
-      <header className="flex justify-between items-center px-6 py-4 bg-black/40 backdrop-blur-2xl z-50 sticky top-0 border-b border-white/5">
-        <button onClick={goHome} className="p-2 hover:bg-white/5 rounded-full">
-          <svg className="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-        </button>
-        <div className="flex flex-col items-center">
-          <h1 className="text-lg font-black tracking-[0.2em] text-white uppercase italic">Jeet AI</h1>
-          <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-widest">Neural Boss Engine</span>
-        </div>
-        <div className="w-9 h-9 rounded-full border-2 border-indigo-500/40 overflow-hidden bg-indigo-950">
-          <img src="https://api.dicebear.com/7.x/bottts/svg?seed=JeetBoss" alt="Boss" className="w-full h-full object-cover" />
+      <header className="bg-[#f97316] py-4 flex items-center justify-center border-b-[4px] border-black shadow-2xl relative z-50">
+        <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-black rounded-full animate-ping"></div>
+            <h1 className="text-3xl font-black italic uppercase text-black tech-title">JEET AI</h1>
+            <div className="w-2 h-2 bg-black rounded-full animate-ping"></div>
         </div>
       </header>
 
-      {/* CHAT CONTAINER */}
-      <main className="flex-1 overflow-y-auto px-6 pt-6 no-scrollbar flex flex-col relative z-10">
-        {messages.length === 0 && !liveUserText && !liveModelText ? (
-          <div className="fade-in space-y-12 pb-32 flex flex-col items-center">
-             <div className="text-center mt-10">
-                <h2 className="text-4xl font-black text-white italic">JEET <span className="text-indigo-500">AI</span></h2>
-                <p className="text-[10px] text-white/40 tracking-[0.5em] mt-3 uppercase font-black">Elite Web & Art System</p>
-             </div>
-             <div className="grid grid-cols-1 w-full gap-4">
-                {[
-                  { icon: '🎨', text: 'Generate Art (Photo Banao)', action: () => handleQuickAction('Generate a futuristic cyberpunk tiger.', 'image') },
-                  { icon: '🌎', text: 'Live News Search', action: () => handleQuickAction('Tell me the latest technology news from today.', 'text') },
-                  { icon: '💎', text: 'Shayari for Boss', action: () => handleQuickAction('Boss ke liye ek badhiya shayari sunao.', 'text') }
-                ].map((item, idx) => (
-                  <button key={idx} onClick={item.action} className="flex items-center gap-5 p-5 bg-white/[0.02] border border-white/5 rounded-[2.2rem] hover:bg-white/[0.08] transition-all italic text-left backdrop-blur-xl">
-                    <div className="w-12 h-12 bg-indigo-600/10 rounded-2xl flex items-center justify-center text-2xl">{item.icon}</div>
-                    <span className="text-[14px] font-bold text-white/70 uppercase">{item.text}</span>
-                  </button>
-                ))}
-             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-8 pb-44">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} fade-in`}>
-                <div className={`max-w-[85%] px-6 py-4 rounded-[1.8rem] text-[15px] leading-relaxed shadow-2xl backdrop-blur-3xl ${msg.role === 'user' ? 'bg-indigo-600/30 text-indigo-50 border border-indigo-500/20 rounded-tr-none' : 'bg-white/[0.04] border border-white/10 text-white/90 rounded-tl-none italic'}`}>
-                  {msg.text}
-                  {msg.sources && (
-                    <div className="mt-4 flex flex-col gap-2 pt-4 border-t border-white/5">
-                      <p className="text-[9px] uppercase font-black text-white/20 tracking-widest mb-1">Found on Google:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {msg.sources.map((link, idx) => (
-                          <a key={idx} href={link.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] text-indigo-300 hover:bg-indigo-500/20 transition-all truncate max-w-[150px]">
-                            {link.title || "View Source"}
-                          </a>
-                        ))}
-                      </div>
+      <div className="flex flex-1 overflow-hidden relative">
+        <div className="absolute inset-0 purple-gradient z-0 opacity-95"></div>
+
+        {/* MAIN CHAT AREA */}
+        <div className="flex-1 relative z-10 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden max-w-5xl mx-auto w-full">
+            <div className={`transition-all duration-700 relative ${messages.length > 0 ? 'h-16 w-16 mb-4' : 'w-72 h-72 mb-10'}`}>
+              <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="neural" />
+            </div>
+            
+            <div className="w-full flex-1 overflow-y-auto no-scrollbar flex flex-col gap-8 px-2 pb-10">
+               {messages.length === 0 && !isActive && (
+                 <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-10">
+                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
+                        <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     </div>
-                  )}
+                    <p className="text-[12px] uppercase font-black tracking-[0.8em] tech-title text-indigo-400">Neural Synthesis Active</p>
+                    <p className="text-[10px] mt-4 font-bold uppercase tracking-widest leading-relaxed text-white/50">Boss, bina photo ke bhi 'banao' likh kar generate karein.<br/>Select photos up to 10 for magic transformation.</p>
+                 </div>
+               )}
+               {messages.map((m, i) => (
+                 <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+                   <div className={`chat-msg p-5 rounded-[2rem] text-[15px] leading-relaxed w-full max-w-[95%] ${m.role === 'user' ? 'bg-indigo-600/90 text-white rounded-tr-none border border-white/10' : 'bg-white/95 text-black rounded-tl-none font-medium shadow-2xl'}`}>
+                     {m.images && m.images.length > 0 && (
+                       <div className="flex flex-wrap gap-2 mb-4">
+                         {m.images.map((img, idx) => (
+                           <img 
+                            key={idx} 
+                            src={img} 
+                            onClick={() => setPreviewImage(img)}
+                            className="w-20 h-20 object-cover rounded-2xl border-2 border-white/20 cursor-zoom-in hover:scale-105 transition-all shadow-lg" 
+                           />
+                         ))}
+                       </div>
+                     )}
+                     {m.text && <p className="mb-3 whitespace-pre-wrap">{m.text}</p>}
+                     {m.generatedImage && (
+                       <div className="mt-4 relative group">
+                         <div className="overflow-hidden rounded-3xl border-2 border-black/10 shadow-2xl">
+                             <img 
+                                src={m.generatedImage} 
+                                onClick={() => setPreviewImage(m.generatedImage!)}
+                                className="w-full aspect-square object-cover cursor-zoom-in group-hover:scale-105 transition-transform duration-700 brightness-110" 
+                             />
+                         </div>
+                         <div className="absolute top-4 right-4 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                onClick={() => downloadImage(m.generatedImage!)}
+                                className="bg-black/80 backdrop-blur-xl hover:bg-black text-white p-4 rounded-full shadow-2xl transition-all active:scale-90"
+                                title="Download Full Resolution"
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            </button>
+                         </div>
+                         <div className="absolute bottom-6 left-0 right-0 flex justify-center">
+                            <span className="bg-indigo-600/90 backdrop-blur-md px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-white shadow-xl">Jeet AI Masterpiece</span>
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               ))}
+               <div ref={scrollRef} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* FOOTER CONTROLS */}
+      <footer className="bg-black px-6 py-8 flex flex-col gap-6 border-t-[4px] border-black z-50">
+        {selectedFiles.length > 0 && (
+          <div className="flex flex-col gap-3 bg-indigo-900/10 p-4 rounded-[2.5rem] border border-white/5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between px-3">
+               <span className="text-[11px] text-indigo-400 uppercase font-black tracking-[0.3em]">{selectedFiles.length} / 10 Materials Loaded</span>
+               <button onClick={() => setSelectedFiles([])} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[9px] font-black uppercase px-3 py-1 rounded-full border border-red-500/20 transition-all">Clear All</button>
+            </div>
+            <div className="flex gap-4 overflow-x-auto no-scrollbar py-1 px-1">
+              {selectedFiles.map((file, idx) => (
+                <div key={idx} className="relative flex-shrink-0 group">
+                  <img src={file.url} className="w-20 h-20 object-cover rounded-2xl border-2 border-white/10 group-hover:border-indigo-500 transition-all shadow-xl" />
+                  <button 
+                    onClick={() => removeFile(idx)}
+                    className="absolute -top-2 -right-2 bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-sm font-black shadow-2xl border-2 border-black"
+                  >
+                    ×
+                  </button>
                 </div>
-                {msg.generatedImage && (
-                  <div className="mt-4 relative group w-full overflow-hidden rounded-[2.5rem] border border-white/10 shadow-2xl bg-black">
-                    <img src={msg.generatedImage} className="w-full aspect-square object-cover" alt="AI Generated" />
-                    <button onClick={() => downloadImage(msg.generatedImage!)} className="absolute bottom-4 right-4 bg-black/40 backdrop-blur-xl p-3 rounded-full border border-white/20 hover:bg-indigo-600 transition-all">
-                       <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0L8 8m4-4v12" /></svg>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-            {liveUserText && (
-              <div className="flex flex-col items-end fade-in">
-                <div className="max-w-[85%] px-6 py-4 rounded-[1.8rem] rounded-tr-none text-[15px] bg-indigo-600/50 text-indigo-50 border border-indigo-400/30">
-                  {liveUserText}
-                </div>
-              </div>
-            )}
-            {liveModelText && (
-              <div className="flex flex-col items-start fade-in">
-                <div className="max-w-[85%] px-6 py-4 rounded-[1.8rem] rounded-tl-none text-[15px] italic bg-white/[0.08] border border-white/20 text-white">
-                  {liveModelText}
-                  <span className="inline-block w-1 h-4 bg-white ml-1 animate-pulse"></span>
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
+              ))}
+            </div>
           </div>
         )}
-      </main>
-
-      {/* FOOTER */}
-      <footer className="px-5 pb-8 pt-4 bg-black/80 backdrop-blur-3xl border-t border-white/5 z-40 relative">
+        
         <div className="flex items-center gap-4">
-          <div className="flex-1 bg-white/[0.03] border border-white/5 rounded-full flex items-center px-5 py-2.5">
-            <input
-              type="text"
+          <div className="flex-1 bg-white/[0.03] rounded-full px-8 py-5 flex items-center border border-white/5 shadow-2xl focus-within:border-indigo-500/50 focus-within:bg-white/[0.05] transition-all">
+            <input 
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleQuickAction(chatInput, 'text')}
-              placeholder="Boss, type 'photo banao'..."
-              className="flex-1 bg-transparent outline-none text-[14px] text-white h-9"
+              onKeyDown={e => e.key === 'Enter' && handleAction()}
+              placeholder={selectedFiles.length > 0 ? "Describe the transformation..." : "E.g. 'Ek sher ki photo banao'..."} 
+              className="w-full bg-transparent outline-none text-white text-base font-medium placeholder:text-white/20"
             />
-            {chatInput.trim() && (
-              <button onClick={() => handleQuickAction(chatInput, 'text')} className="ml-2 p-2 bg-indigo-600 rounded-full">
-                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
-              </button>
-            )}
           </div>
-          <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/5 rounded-full text-white/40 border border-white/5">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          </button>
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleFileChange} />
-          <div className="relative flex items-center justify-center p-2">
-            <div className={`absolute w-[76px] h-[76px] border-2 border-transparent border-t-indigo-500 border-b-cyan-500 rounded-full animate-[spin_3s_linear_infinite] opacity-60`}></div>
-            <button onClick={isActive ? stopConversation : startConversation} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-2xl z-10 relative ${isActive ? 'bg-white scale-110' : 'bg-indigo-600 hover:scale-105 active:scale-95'}`}>
-              {isActive ? <div className="w-5 h-5 bg-red-600 rounded-lg animate-pulse" /> : <span className="font-black text-[12px] text-white italic tracking-widest">{isConnecting ? '...' : 'LINK'}</span>}
-            </button>
+          
+          <div className="flex items-center gap-3">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border-2 ${selectedFiles.length > 0 ? 'bg-indigo-600 border-indigo-400 text-white shadow-[0_0_20px_rgba(79,70,229,0.5)]' : 'bg-white/5 border-white/5 text-white/40 hover:text-white'}`}
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+              </button>
+              <input type="file" ref={fileInputRef} className="hidden" onChange={onFileChange} accept="image/*" multiple />
+
+              <button 
+                onClick={handleAction}
+                disabled={!chatInput.trim() && selectedFiles.length === 0}
+                className="w-14 h-14 bg-blue-600 hover:bg-blue-500 disabled:opacity-5 disabled:grayscale rounded-full flex items-center justify-center text-white transition-all shadow-[0_0_30px_rgba(37,99,235,0.3)] active:scale-90"
+              >
+                <svg className="w-6 h-6 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+              </button>
+
+              <button 
+                onClick={isActive ? stopSession : startLiveSession}
+                className={`w-16 h-16 rounded-full border-[4px] border-black transition-all flex items-center justify-center shadow-2xl ${isActive ? 'bg-white scale-110 shadow-[0_0_40px_white]' : 'bg-red-600 hover:bg-red-500 active:scale-95 shadow-[0_0_30px_rgba(220,38,38,0.4)]'}`}
+              >
+                {isConnecting ? (
+                  <div className="w-7 h-7 border-[3px] border-black border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <div className={`w-6 h-6 rounded-full ${isActive ? 'bg-red-600' : 'border-2 border-white'}`}></div>
+                )}
+              </button>
           </div>
         </div>
       </footer>
 
-      {/* LIVE VIEW */}
-      {isActive && (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-between py-12 fade-in overflow-hidden">
-          {isCameraOn && (
-            <div className="absolute inset-0 z-0">
-               <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover opacity-100" />
-            </div>
-          )}
-          <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden opacity-30">
-             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1100px] h-[1100px] border-[1px] border-indigo-500/40 rounded-full animate-[spin_10s_linear_infinite]" />
-             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border-[2px] border-cyan-500/20 rounded-full animate-[spin_18s_linear_infinite_reverse]" />
+      {/* MODALS */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/98 backdrop-blur-3xl flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-300"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="absolute top-10 right-10 flex gap-6">
+             <button 
+                onClick={(e) => { e.stopPropagation(); downloadImage(previewImage); }} 
+                className="text-white bg-indigo-600 p-5 rounded-full shadow-[0_0_50px_rgba(79,70,229,0.5)] hover:scale-110 active:scale-90 transition-all border-2 border-indigo-400"
+             >
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+             </button>
+             <button onClick={() => setPreviewImage(null)} className="text-white bg-white/5 p-5 rounded-full shadow-2xl hover:bg-white/10 border border-white/10 transition-all">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg>
+             </button>
           </div>
-          <div className="flex-1 w-full flex items-center justify-center relative z-20">
-            <div className="w-full h-[450px] scale-150 relative">
-              <Visualizer isActive={isActive} isModelSpeaking={isModelSpeaking} mode="intense" />
+          <img 
+            src={previewImage} 
+            className="max-w-full max-h-[90vh] object-contain rounded-3xl shadow-[0_0_150px_rgba(99,102,241,0.25)] border border-white/10"
+            onClick={(e) => e.stopPropagation()} 
+          />
+          <p className="mt-12 text-[12px] font-black uppercase tracking-[1.5em] text-white/30 tech-title animate-pulse">Neural View Engine</p>
+        </div>
+      )}
+
+      {isGenerating && (
+        <div className="fixed inset-0 bg-black/98 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center gap-10 animate-in fade-in duration-500">
+          <div className="relative w-36 h-36">
+            <div className="absolute inset-0 border-[6px] border-indigo-500/10 rounded-full"></div>
+            <div className="absolute inset-0 border-[6px] border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="absolute inset-8 border-[6px] border-white/5 border-b-transparent rounded-full animate-spin-slow"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-12 h-12 bg-indigo-500 rounded-full animate-pulse shadow-[0_0_50px_#6366f1]"></div>
             </div>
           </div>
-          <div className="w-full px-6 z-30 mb-8 flex flex-col items-center gap-8">
-              <div className="w-full max-w-[85%] text-center min-h-[70px] bg-black/40 backdrop-blur-2xl rounded-[2.5rem] p-5 border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-                 {liveModelText ? (
-                    <p className="text-white font-bold italic text-lg drop-shadow-xl">{liveModelText}</p>
-                 ) : (
-                    <p className="text-white/40 font-black tracking-[0.4em] text-[10px] uppercase">Neural Link Established</p>
-                 )}
-              </div>
-              <div className="flex justify-center gap-6">
-                <button onClick={() => setIsMicMuted(!isMicMuted)} className={`w-16 h-16 rounded-full flex items-center justify-center backdrop-blur-3xl border border-white/20 transition-all ${isMicMuted ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-black/40 text-white/50'}`}>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
-                </button>
-                <button onClick={stopConversation} className="w-24 h-16 bg-red-600 rounded-[2rem] flex items-center justify-center shadow-3xl active:scale-95 transition-all">
-                   <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-              </div>
+          <div className="flex flex-col items-center gap-4 text-center">
+            <span className="text-xl font-black uppercase tracking-[1em] text-white tech-title">Neural Synthesis</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-indigo-500/80">Boss, please wait... high-res image logic active...</span>
           </div>
         </div>
       )}
