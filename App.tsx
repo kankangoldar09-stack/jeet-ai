@@ -192,7 +192,14 @@ const App: React.FC = () => {
       setAuthError("");
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      setAuthError(err.message);
+      if (err?.code === "auth/unauthorized-domain" || err?.message?.includes("unauthorized-domain")) {
+        const domain = window.location.hostname;
+        setAuthError(
+          `Domain Unauthorized: Firebase Console > Authentication > Settings > Authorized Domains में जाकर "${domain}" को Add करें!`
+        );
+      } else {
+        setAuthError(err.message || "Google Login failed");
+      }
     }
   };
 
@@ -247,17 +254,18 @@ const App: React.FC = () => {
     clean = clean.replace(/\s+/g, " ").trim();
 
     if (!clean) return "";
-    if (clean.length > 700) {
+    // Keep spoken snippet concise (max 320 chars) for instant, lightning-fast speech response
+    if (clean.length > 320) {
       const sentences = clean.split(/(?<=[.!?।\n])\s+/);
       let spoken = "";
       for (const s of sentences) {
-        if (((spoken ? spoken + " " : "") + s).length <= 700) {
+        if (((spoken ? spoken + " " : "") + s).length <= 320) {
           spoken = (spoken ? spoken + " " : "") + s;
         } else {
           break;
         }
       }
-      return spoken || clean.slice(0, 700);
+      return spoken || clean.slice(0, 320);
     }
     return clean;
   };
@@ -351,10 +359,10 @@ const App: React.FC = () => {
         utterance.lang = "hi-IN";
       }
 
-      utterance.rate = 1.0;
+      utterance.rate = 1.06;
       utterance.pitch =
         voiceName === "Fenrir" || voiceName === "Charon"
-          ? 0.92
+          ? 0.95
           : isFemale
             ? 1.05
             : 1.0;
@@ -870,8 +878,8 @@ Formatting:
       let urls: { title: string; uri: string }[] = [];
 
       const candidateModels = [
-        "gemini-3.7-flash",
         "gemini-2.5-flash",
+        "gemini-3.7-flash",
         "gemini-2.0-flash",
       ];
       let generationSuccess = false;
@@ -893,6 +901,7 @@ Formatting:
           for await (const chunk of streamResponse) {
             const chunkText = chunk.text;
             if (chunkText) {
+              setIsSearching(false);
               fullText += chunkText;
               setStreamingText(fullText);
             }
