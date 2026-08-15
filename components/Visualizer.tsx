@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 interface VisualizerProps {
   isActive: boolean;
   isModelSpeaking: boolean;
-  mode?: 'normal' | 'intense' | 'neural';
+  mode?: 'normal' | 'intense' | 'neural' | 'friday';
 }
 
 const Visualizer: React.FC<VisualizerProps> = ({ isActive, isModelSpeaking, mode = 'normal' }) => {
@@ -26,13 +26,19 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isModelSpeaking, mode
       const centerY = canvas.height / 2;
       const intensity = isModelSpeaking ? 1.6 : 0.7;
 
-      if (mode === 'neural') {
-        // Red Central Orb (Neural Link Style)
+      if (mode === 'neural' || mode === 'friday') {
+        const isFriday = mode === 'friday';
+        const primaryColor = isFriday ? '#8ab4f8' : '#ef4444';
+        const secondaryColor = isFriday ? '#1e3a8a' : '#7f1d1d';
+        const glowColor = isFriday ? 'rgba(138, 180, 248, 0.4)' : 'rgba(220, 38, 38, 0.4)';
+        const orbitColor = isFriday ? 'rgba(138, 180, 248, 0.3)' : 'rgba(220, 38, 38, 0.3)';
+
+        // Central Orb
         const orbSize = 40 * (1 + (isModelSpeaking ? Math.sin(time * 10) * 0.15 : Math.sin(time * 2) * 0.05));
         
         // Outer Glow
         const outerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, orbSize * 2.5);
-        outerGlow.addColorStop(0, 'rgba(220, 38, 38, 0.4)');
+        outerGlow.addColorStop(0, glowColor);
         outerGlow.addColorStop(1, 'transparent');
         ctx.fillStyle = outerGlow;
         ctx.beginPath();
@@ -41,20 +47,20 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isModelSpeaking, mode
 
         // Core Orb
         const innerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, orbSize);
-        innerGlow.addColorStop(0, '#ef4444');
-        innerGlow.addColorStop(1, '#7f1d1d');
+        innerGlow.addColorStop(0, primaryColor);
+        innerGlow.addColorStop(1, secondaryColor);
         ctx.fillStyle = innerGlow;
         ctx.beginPath();
         ctx.arc(centerX, centerY, orbSize, 0, Math.PI * 2);
         ctx.fill();
 
-        // Broken Orbits
-        ctx.strokeStyle = 'rgba(220, 38, 38, 0.3)';
+        // Orbits / HUD Rings
+        ctx.strokeStyle = orbitColor;
         ctx.lineWidth = 1.5;
         
-        const drawOrbit = (radius: number, speed: number, dashOffset: number) => {
+        const drawOrbit = (radius: number, speed: number, dashOffset: number, dashes: number[] = [30, 60, 10, 40]) => {
           ctx.beginPath();
-          ctx.setLineDash([30, 60, 10, 40]);
+          ctx.setLineDash(dashes);
           ctx.lineDashOffset = time * speed + dashOffset;
           ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
           ctx.stroke();
@@ -63,6 +69,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ isActive, isModelSpeaking, mode
         drawOrbit(60, -20, 0);
         drawOrbit(80, 15, 100);
         drawOrbit(100, -10, 50);
+        
+        if (isFriday) {
+          drawOrbit(120, 5, 200, [5, 15]);
+          drawOrbit(140, -8, 0, [2, 10]);
+        }
+        
         ctx.setLineDash([]); // Reset
       } else {
         // Default Glowing Blobs

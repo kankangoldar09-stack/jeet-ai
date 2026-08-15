@@ -1,9 +1,12 @@
 {
+  "name": "Jeet AI - Neural Interface",
+  "description": "Elite AI assistant Friday with real-time live voice, custom voice engine matrix, image generation, web grounding, and neural HUD.",
   "requestFramePermissions": [
     "camera",
     "microphone",
     "geolocation"
   ],
-  "name": "Jeet AI - Neural Interface",
-  "description": ""
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

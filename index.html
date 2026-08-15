@@ -4,16 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Jeet AI - Elite Neural Interface</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700&family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
     <script>
         window.process = window.process || { env: { API_KEY: "" } };
     </script>
     <style>
-        :root { --accent: #6366f1; }
+        :root { 
+            --accent: #8ab4f8; 
+            --bg-dark: #131314;
+            --bg-sidebar: #1e1f20;
+            --bg-input: #282a2d;
+            --text-primary: #e3e3e3;
+            --text-secondary: #c4c7c5;
+        }
         body {
-            background: #000000;
-            color: #ffffff;
+            background: var(--bg-dark);
+            color: var(--text-primary);
             font-family: 'Inter', sans-serif;
             margin: 0;
             padding: 0;
@@ -24,47 +30,75 @@
             -webkit-font-smoothing: antialiased;
         }
         #root { height: 100%; width: 100%; }
-        .purple-gradient {
-            background: linear-gradient(180deg, #0f0720 0%, #1e1b4b 100%);
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        .sidebar-btn {
-            border: 2px solid rgba(255, 255, 255, 0.1);
+        .glass {
             background: rgba(255, 255, 255, 0.03);
-            border-radius: 9999px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-size: 0.7rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            color: rgba(255, 255, 255, 0.5);
-            font-family: 'Space Grotesk', sans-serif;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .sidebar-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            color: var(--text-secondary);
+            text-align: left;
+        }
+        .sidebar-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
         }
         .sidebar-btn.active {
-            background: #ffffff;
-            color: #000000;
-            border-color: #ffffff;
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
+            background: rgba(138, 180, 248, 0.1);
+            color: var(--accent);
         }
-        .sidebar-btn:hover:not(.active) {
-            border-color: rgba(255, 255, 255, 0.4);
-            background: rgba(255, 255, 255, 0.08);
-            color: white;
+        
+        .chat-input-container {
+            background: var(--bg-input);
+            border-radius: 28px;
+            padding: 4px 8px;
+            transition: box-shadow 0.2s ease;
+        }
+        .chat-input-container:focus-within {
+            box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.2);
+        }
+        
+        .user-msg {
+            background: #2b2c2f;
+            border-radius: 18px;
+            padding: 12px 16px;
+            max-width: 85%;
+            align-self: flex-end;
+        }
+        .model-msg {
+            max-width: 90%;
+            align-self: flex-start;
+            line-height: 1.6;
         }
         
         .tech-title {
             font-family: 'Space Grotesk', sans-serif;
-            text-transform: uppercase;
-            letter-spacing: 0.2em;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
-        .chat-msg {
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease forwards;
         }
     </style>
     <script type="importmap">
