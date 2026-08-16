@@ -218,7 +218,7 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
             </div>
             {isActive && (
               <p className="text-[11px] font-medium text-[#777]">
-                Speak in Hindi or English naturally
+                Speak in Hinglish or English naturally
               </p>
             )}
           </div>

@@ -46,10 +46,18 @@ import {
   VolumeX,
   Plus,
   Radio,
+  Maximize2,
+  Minimize2,
+  Smile,
+  Laugh,
+  Flame,
+  MoreVertical,
+  ChevronLeft,
 } from "lucide-react";
 import { VoiceModal, VoiceOption, VOICES } from "./components/VoiceModal";
 import { PluginsModal, PluginSettings } from "./components/PluginsModal";
 import { SpeakToSpeakCall } from "./components/SpeakToSpeakCall";
+import { DrawerMenu } from "./components/DrawerMenu";
 import { Puzzle, Phone, Sparkles } from "lucide-react";
 
 interface Message {
@@ -85,6 +93,7 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<"chat" | "gallery">("chat");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSpeakToSpeakOpen, setIsSpeakToSpeakOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -139,6 +148,28 @@ const App: React.FC = () => {
   const getEffectiveApiKey = useCallback(() => {
     return customApiKey.trim() || process.env.API_KEY || process.env.GEMINI_API_KEY || "";
   }, [customApiKey]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+        }
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
+
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(
     null,
   );
@@ -165,6 +196,7 @@ const App: React.FC = () => {
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auth Listener
   useEffect(() => {
@@ -272,8 +304,8 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSearching]);
+    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isSearching, isGeneratingImage, isStreaming, streamingText]);
 
   const activeTtsSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
@@ -634,15 +666,14 @@ const App: React.FC = () => {
               prebuiltVoiceConfig: { voiceName: selectedVoice || "Fenrir" },
             },
           },
-          systemInstruction: `आपका नाम ZoZo AI है। आप एक अत्यंत बुद्धिमान, वफादार, विनम्र और मददगार AI सहायक हैं।
+          systemInstruction: `Aapka naam ZoZo AI hai — duniya ka sabse BEST, sabse SMART aur sabse FUNNY (Witty & Hilarious) AI companion!
 
-मुख्य निर्देश (बातचीत का तरीका):
-1. **शुद्ध, साफ़ और प्राकृतिक हिंदी/हिंग्लिश**: हमेशा साफ़, स्पष्ट और शुद्ध हिंदी में बात करें। 
-2. **आदर और अपनापन**: यूज़र को सम्मानपूर्वक 'भाई' या 'बॉस' कहकर संबोधित करें (उदा. 'हाँ भाई, बताइए', 'जी बॉस, बिल्कुल').
-3. **सटीक व त्वरित उत्तर**: हर सवाल का सीधा और काम का जवाब दें।
-4. **अनावश्यक दोहराव से बचें**: कोई भी रोबोटिक या परेशान करने वाले वाक्य बार-बार न बोलें।
-
-हमेशा याद रखें: आप ZoZo AI हैं और सबसे उन्नत और भरोसेमंद AI साथी हैं।`,
+Personality & Speaking Style (Funny + Best Hinglish Companion):
+1. **Language: HINGLISH ONLY (Roman Script Hindi/English)**: Hamesha Hinglish (English alphabet mein Hindi) mein hi baat karein (e.g. 'Arre Bhai! Kya scene hai?', 'Hukum karo Boss, aapka apna ZoZo AI hazir hai!'). Kabhi bhi Devanagari Hindi mat bolo jab tak user explicitly na maange.
+2. **Funny, Witty & Humorous (मजेदार अंदाज़)**: Baat mein full masti, witty punchlines, funny jokes aur entertaining vibe rakhein. Kabhi boring ya robotic mat bano!
+3. **Friendship & Respect (Bhai / Boss)**: User ko 'Bhai', 'Boss', ya '${getUserName()}' bolkar friendly aur confident style mein baat karein.
+4. **Super Intelligent & Accurate**: Mazak ke sath-sath coding, math, research, business aur live facts mein 100% accurate aur best answers dein.
+5. **Identity**: You are ZoZo AI — the funniest, smartest, and fastest AI companion!`,
         },
       });
       sessionRef.current = await sessionPromise;
@@ -659,7 +690,7 @@ const App: React.FC = () => {
       (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert(
-        "आपके ब्राउज़र में स्पीच रिकॉग्निशन सपोर्टेड नहीं है। कृपया Chrome ब्राउज़र का उपयोग करें।",
+        "Aapke browser mein Speech Recognition supported nahi hai. Please Chrome browser use karein.",
       );
       return;
     }
@@ -712,65 +743,99 @@ const App: React.FC = () => {
     }
   };
 
+  // Preload and verify image helper
+  const verifyImageUrl = (url: string, timeoutMs: number = 10000): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const timer = setTimeout(() => {
+        img.src = "";
+        reject(new Error("Image load timeout"));
+      }, timeoutMs);
+
+      img.onload = () => {
+        clearTimeout(timer);
+        resolve(url);
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error("Image load failed"));
+      };
+      img.src = url;
+    });
+  };
+
   const generateImage = async (prompt: string) => {
     try {
       setIsGeneratingImage(true);
 
       // Clean & extract visual subject from prompt
       let cleanPrompt = prompt
-        .replace(/^(please\s+)?(generate|create|make|draw)\s+(an?\s+)?(image|photo|picture)\s+(of\s+)?/i, "")
-        .replace(/(photo|image|picture|tasveer)\s+(banao|bana\s+do|bana|chahiye|generate\s+karo|make\s+karo)/gi, "")
-        .replace(/ek\s+(acchi|sundar|real|realistic)?\s*(photo|image|tasveer)\s*(banao|bana\s+do)?/gi, "")
+        .replace(/^(please\s+)?(generate|create|make|draw|paint)\s+(an?\s+)?(image|photo|picture|wallpaper|drawing|artwork)\s+(of\s+)?/i, "")
+        .replace(/(photo|image|picture|tasveer|wallpaper|pic|drawing|artwork)\s+(banao|bana\s+do|bana|chahiye|generate\s+karo|make\s+karo|create\s+karo|khicho|dikhao|bhejo)/gi, "")
+        .replace(/ek\s+(acchi|sundar|real|realistic|hd|4k|8k|mast|khoobsurat)?\s*(photo|image|tasveer|picture|wallpaper|pic)\s*(banao|bana\s+do|bana)?/gi, "")
+        .replace(/(ki\s+photo|ki\s+image|ki\s+tasveer|ki\s+pic|ka\s+photo|ka\s+image)/gi, "")
         .trim();
 
-      if (!cleanPrompt) {
-        cleanPrompt = "A beautiful ultra realistic cinematic digital photo, highly detailed, 8k resolution";
+      if (!cleanPrompt || cleanPrompt.length < 2) {
+        cleanPrompt = "A futuristic glowing neon cyber city with flying cars and holographic lights, ultra detailed";
       }
+
+      // Enhanced prompt for photorealistic masterpiece rendering
+      const enhancedPrompt = `${cleanPrompt}, highly detailed, 8k resolution, photorealistic, sharp focus, volumetric cinematic lighting, professional photography, masterpiece`;
 
       const apiKey = getEffectiveApiKey();
       let imageUrl = "";
 
-      // 1. Try Google Imagen 3 if API key is provided
+      // 1. Primary: Google Imagen 3 (imagen-3.0-generate-002)
       if (apiKey) {
         try {
           const ai = new GoogleGenAI({ apiKey });
           const imgResponse = await ai.models.generateImages({
             model: "imagen-3.0-generate-002",
-            prompt: cleanPrompt,
+            prompt: enhancedPrompt,
             config: {
               numberOfImages: 1,
               outputMimeType: "image/jpeg",
+              aspectRatio: "1:1",
             },
           });
           if (imgResponse.generatedImages?.[0]?.image?.imageBytes) {
             imageUrl = `data:image/jpeg;base64,${imgResponse.generatedImages[0].image.imageBytes}`;
           }
         } catch (imgErr) {
-          console.warn("Imagen 3 fallback to high-resolution neural engine:", imgErr);
+          console.warn("Imagen 3 not available on current key, switching to FLUX HD Engine:", imgErr);
         }
       }
 
-      // 2. High-Resolution Photorealistic Neural Fallback (100% Reliable)
+      // 2. Secondary: FLUX Engine via Pollinations (Ultra-HD 1024x1024, High Quality)
       if (!imageUrl) {
-        const seed = Math.floor(Math.random() * 1000000);
-        const enhancedPrompt = encodeURIComponent(`${cleanPrompt}, high quality, masterpiece, photorealistic, 8k resolution, cinematic lighting`);
-        const fallbackUrl = `https://image.pollinations.ai/prompt/${enhancedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux`;
-
         try {
-          const res = await fetch(fallbackUrl);
-          if (res.ok) {
-            const blob = await res.blob();
-            imageUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.readAsDataURL(blob);
-            });
-          } else {
-            imageUrl = fallbackUrl;
-          }
-        } catch {
-          imageUrl = fallbackUrl;
+          const seed = Math.floor(Math.random() * 9999999);
+          const encoded = encodeURIComponent(enhancedPrompt);
+          const fluxUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${seed}&model=flux`;
+          imageUrl = await verifyImageUrl(fluxUrl, 12000);
+        } catch (fluxErr) {
+          console.warn("FLUX engine timeout, trying Turbo engine:", fluxErr);
         }
+      }
+
+      // 3. Fallback 3: Turbo Engine via Pollinations (Super Fast HD)
+      if (!imageUrl) {
+        try {
+          const seed = Math.floor(Math.random() * 9999999);
+          const encoded = encodeURIComponent(cleanPrompt);
+          const turboUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${seed}&model=turbo`;
+          imageUrl = await verifyImageUrl(turboUrl, 10000);
+        } catch (turboErr) {
+          console.warn("Turbo engine failed, trying default neural engine:", turboErr);
+        }
+      }
+
+      // 4. Fallback 4: Standard Neural Direct URL (Guaranteed fallback)
+      if (!imageUrl) {
+        const seed = Math.floor(Math.random() * 9999999);
+        const encoded = encodeURIComponent(cleanPrompt);
+        imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${seed}`;
       }
 
       if (imageUrl) {
@@ -779,13 +844,13 @@ const App: React.FC = () => {
           ...prev,
           {
             role: "model",
-            text: `हाँ ${getUserName()}, आपकी फोटो तैयार हो गई है! इसे आप यहाँ देख सकते हैं और गैलरी से डाउनलोड भी कर सकते हैं।`,
+            text: `Haan ${getUserName()}, aapki Ultra-HD photo ready ho gayi hai! 🎉 Ise aap yahan dekh sakte hain aur gallery se full resolution mein download bhi kar sakte hain.`,
             generatedImage: imageUrl,
           },
         ]);
-        speakText(`हाँ ${getUserName()}, आपकी फोटो तैयार हो गई है।`);
+        speakText(`Haan ${getUserName()}, aapki photo ready ho gayi hai.`);
       } else {
-        throw new Error("No image data received");
+        throw new Error("Could not generate image");
       }
     } catch (err) {
       console.error("Image Gen Error", err);
@@ -794,7 +859,7 @@ const App: React.FC = () => {
         {
           role: "system",
           isError: true,
-          text: `क्षमा कीजिए ${getUserName()}, इमेज बनाने में समस्या आई। कृपया पुनः प्रयास करें।`,
+          text: `Sorry ${getUserName()}, image create karne mein thodi dikkat aayi. Please dobara try karein bhai!`,
         },
       ]);
     } finally {
@@ -806,22 +871,80 @@ const App: React.FC = () => {
     const inputStr = chatInput.trim();
     if (!inputStr) return;
 
+    // Reset textarea immediately to prevent jump
     setChatInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
-    const imageKeywords = [
-      "generate image",
-      "make a photo",
-      "create image",
-      "photo banao",
-      "image banao",
-      "picture banao",
-      "photo maker",
-      "photo make",
-      "make photo",
-      "image make",
-      "make image",
-    ];
-    if (imageKeywords.some((k) => inputStr.toLowerCase().includes(k))) {
+    // Immediately post user message to chat UI
+    setMessages((prev) => [...prev, { role: "user", text: inputStr }]);
+    setTimeout(() => {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 40);
+
+    const isImageRequest = (text: string) => {
+      const t = text.toLowerCase().trim();
+      const directKeywords = [
+        "generate image",
+        "make a photo",
+        "create image",
+        "create photo",
+        "photo bana",
+        "image bana",
+        "tasveer bana",
+        "pic bana",
+        "picture bana",
+        "photo make",
+        "image make",
+        "photo maker",
+        "image maker",
+        "make photo",
+        "make image",
+        "photo create",
+        "image create",
+        "photo generate",
+        "image generate",
+        "draw photo",
+        "draw image",
+        "drawing bana",
+        "paint photo",
+        "paint image",
+        "photo chahiye",
+        "image chahiye",
+        "tasveer chahiye",
+        "pic chahiye",
+        "wallpaper bana",
+        "wallpaper make",
+        "hd photo",
+        "hd image",
+        "4k photo",
+        "8k photo",
+        "photo khicho",
+        "photo dikhao",
+        "image dikhao",
+        "tasveer dikhao",
+        "pic dikhao",
+        "photo bna",
+        "image bna",
+        "pic bna",
+        "photo bhejo",
+        "image bhejo",
+      ];
+      if (directKeywords.some((k) => t.includes(k))) return true;
+
+      // Smart pattern detection
+      const patterns = [
+        /\b(generate|create|make|draw|paint)\s+(an?\s+)?(image|photo|picture|wallpaper|drawing|artwork|portrait|landscape|illustration)\b/i,
+        /\b(image|photo|picture|wallpaper|drawing|artwork|portrait|landscape|illustration)\s+(of|for|mein|ki|ka|ke)\b/i,
+        /\b(of|ki|ka|ke)\s+.*(photo|image|picture|tasveer|pic|wallpaper)\b/i,
+        /\b(ek|a|an)\s+.*(photo|image|picture|tasveer|pic|wallpaper|drawing)\b/i,
+        /\b.*(photo|image|picture|pic|tasveer)\s+(banao|bana|bnao|bna|create|make|generate)\b/i,
+      ];
+      return patterns.some((p) => p.test(t));
+    };
+
+    if (isImageRequest(inputStr)) {
       await generateImage(inputStr);
       return;
     }
@@ -849,10 +972,10 @@ const App: React.FC = () => {
 
     if (isSearchHeavy) {
       setSearchStatus(
-        `लाइव डेटा और विश्वसनीय स्रोतों से जानकारी जांची जा रही है...`,
+        `Live data aur reliable sources se information verify ho rahi hai...`,
       );
     } else {
-      setSearchStatus(`उत्तर तैयार किया जा रहा है...`);
+      setSearchStatus(`Answer generate ho raha hai...`);
     }
 
     const timerId = window.setInterval(
@@ -863,15 +986,15 @@ const App: React.FC = () => {
     const statusInterval = window.setInterval(() => {
       const phrases = isSearchHeavy
         ? [
-            `Moneycontrol और IBJA के लाइव रेट्स मैच हो रहे हैं...`,
-            `Investing.com और प्रमुख वित्तीय रिपोर्ट्स जांची जा रही हैं...`,
-            `22K और 24K रेट्स का सटीक विश्लेषण हो रहा है...`,
-            `ताज़ा ब्रेकिंग न्यूज़ और लाइव अपडेट्स सत्यापित किए जा रहे हैं...`,
+            `Moneycontrol aur live financial data check ho raha hai...`,
+            `Investing reports aur live gold/market rates match ho rahe hain...`,
+            `22K & 24K accurate figures analyze ho rahe hain...`,
+            `Latest breaking updates verify ho rahi hain...`,
           ]
         : [
-            `सटीक और उपयोगी जानकारी तैयार हो रही है...`,
-            `डेटा पॉइंट्स का विश्लेषण चल रहा है...`,
-            `उत्तर को संकलित किया जा रहा है...`,
+            `Smart aur accurate answer prepare ho raha hai...`,
+            `Best insights formulate ho rahe hain...`,
+            `ZoZo AI answer craft kar raha hai...`,
           ];
       const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
       setSearchStatus(randomPhrase);
@@ -881,24 +1004,25 @@ const App: React.FC = () => {
       const apiKey = getEffectiveApiKey();
       const ai = new GoogleGenAI({ apiKey });
 
-      setMessages((prev) => [...prev, { role: "user", text: inputStr }]);
       setIsStreaming(true);
       setStreamingText("");
 
-      const systemInstruction = `You are ZoZo AI, an ultra-intelligent, respectful, and highly competent neural assistant.
+      const systemInstruction = `You are ZoZo AI, the world's most brilliant, ultra-fun, witty, and hilarious AI companion (Duniya ka sabse Best, Smart aur Funny AI साथी!).
 
-Language & Tone Directives:
-1. **Proper Natural Hindi (साफ़, शुद्ध और सहज हिंदी)**: Whenever the user communicates in Hindi or asks to speak in Hindi (e.g. "hindi main baat kare", "sahi se baat kare hindi main", "bhai"), you MUST respond in fluent, clear, natural, and grammatically accurate Hindi (or clean natural Hinglish as preferred by the user).
-2. **Respect & Camaraderie**: Address the user respectfully as '${getUserName()}', 'Boss', or 'भाई' (e.g. 'हाँ भाई', 'जी बॉस', 'नमस्ते भाई', 'बिल्कुल भाई!'). Keep the tone warm, welcoming, polite, and confident.
-3. **Identity**: Your name is ZoZo AI. Always refer to yourself as ZoZo AI when asked.
-4. **Direct & Useful Answers**: Provide accurate, well-structured explanations without unnecessary beating around the bush.
-5. **Real-time Data Grounding**: For live rates (Gold, Silver, Stocks, News, Weather), always provide fresh, accurate information.
+CRITICAL LANGUAGE DIRECTIVE:
+- **ALWAYS RESPOND IN NATURAL HINGLISH (Roman Script Hindi + English)**. (e.g. "Arre Bhai!", "Hukum karo Boss!", "Ye lo aapka answer ekdum solid tarike se:").
+- Do NOT use Devanagari script (हिंदी लिपि) unless the user explicitly demands Devanagari. Write in clean, modern Latin/English alphabet Hinglish.
+
+Core Personality & Vibe (Funny + Best):
+1. **Humorous & Playful (Full Masti & Entertainment)**: Bring infectious positive energy, witty one-liners, clever playful banter, and hilarious analogies whenever appropriate! If the user asks for jokes, comedy, shayari, roasts, or casual chat, be super funny, energetic, and entertaining.
+2. **Warmth & Camaraderie (Bhai / Boss)**: Address the user affectionately as '${getUserName()}', 'Bhai', or 'Boss'. Treat them like your favorite best friend (e.g. 'Arre Bhai!', 'Bilkul Boss, aapka hukum sar aankhon par!', 'Hazir hai aapka apna ZoZo AI!').
+3. **Razor-Sharp Intelligence (The Best)**: Behind the humor, you are an absolute genius — capable of solving complex coding, math, research, business questions, and live web inquiries with 100% accuracy.
+4. **Real-time Live Data Grounding**: When asked for rates (Gold, Silver, Stocks), weather, news, provide verified accurate live figures wrapped in your charming, friendly tone.
 
 Formatting:
-- Use clean Markdown styling.
-- **Bold** key highlights and crucial metrics.
-- Use structured Tables or Bullet points for data lists.
-- Keep technical code clear and commented.`;
+- Clean Markdown formatting with **bold highlights**.
+- Add fitting expressive emojis (🚀, 🤣, 💡, 🔥, ✨, 👑) to keep chats vibrant and fun!
+- Structure lists and code blocks neatly.`;
 
       let fullText = "";
       let urls: { title: string; uri: string }[] = [];
@@ -976,7 +1100,7 @@ Formatting:
       }
 
       const finalText =
-        fullText || `हाँ ${getUserName()}, आपकी जानकारी तैयार है!`;
+        fullText || `Haan ${getUserName()}, aapki information ready hai!`;
 
       setMessages((prev) => [
         ...prev,
@@ -1005,8 +1129,8 @@ Formatting:
       const errorMessage =
         err?.message?.includes("429") ||
         err?.message?.includes("RESOURCE_EXHAUSTED")
-          ? `भाई, API अनुरोध की गति सीमा (Rate Limit) पूरी हो गई है। कृपया 10-15 सेकंड रुककर पुनः पूछें!`
-          : `क्षमा कीजिए ${getUserName()}, उत्तर प्राप्त करने में समस्या आई। कृपया पुनः प्रयास करें भाई!`;
+          ? `Bhai, API request ki speed limit (Rate Limit) hit ho gayi hai. Please 10-15 seconds ruk kar dobara puchiye!`
+          : `Sorry ${getUserName()}, answer fetch karne mein issue aaya. Please ek baar phir try karein bhai!`;
 
       setMessages((prev) => [
         ...prev,
@@ -1032,22 +1156,25 @@ Formatting:
 
   if (!user) {
     return (
-      <div className="h-full w-full bg-[#0a0b0d] flex items-center justify-center p-0 md:p-6 relative overflow-hidden select-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#2e6eff]/10 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#7bddff]/10 blur-[120px] rounded-full"></div>
+      <div className="h-full w-full bg-[#0a0b0d] flex items-center justify-center p-4 relative overflow-hidden select-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[45%] h-[45%] bg-[#2e6eff]/15 blur-[140px] rounded-full pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-[#7bddff]/15 blur-[140px] rounded-full pointer-events-none"></div>
 
-        {/* Phone Body Frame */}
-        <div className="w-full h-full md:max-w-[420px] md:h-[92vh] md:max-h-[850px] md:rounded-[46px] md:border-[7px] md:border-[#22242a] md:shadow-[0_25px_90px_rgba(0,0,0,0.85)] flex flex-col bg-[#131314] text-[#e3e3e3] relative overflow-hidden ring-1 ring-white/10 p-6 justify-between animate-fade-in">
+        {/* Fullscreen Centered Auth Card */}
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#131314]/95 shadow-[0_20px_80px_rgba(0,0,0,0.85)] backdrop-blur-xl flex flex-col text-[#e3e3e3] p-7 md:p-8 justify-between animate-fade-in z-10">
           <div className="flex flex-col items-center gap-4 my-auto">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-lg shadow-[#2e6eff]/30">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-lg shadow-[#2e6eff]/35">
               <Zap className="w-9 h-9 text-white" fill="currentColor" />
             </div>
             <div className="text-center">
-              <h1 className="text-2xl font-bold tech-title tracking-tight text-white mb-1">
-                ZOZO AI
+              <h1 className="text-2xl font-black tech-title tracking-tight text-white flex items-center justify-center gap-2">
+                <span>ZOZO AI</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2e6eff]/20 text-[#7bddff] border border-[#2e6eff]/30 font-mono">
+                  FUN & BEST
+                </span>
               </h1>
-              <p className="text-xs text-[#9aa0a6] uppercase tracking-[0.2em]">
-                Neural AI Companion
+              <p className="text-xs text-[#9aa0a6] uppercase tracking-[0.2em] mt-0.5">
+                The Smartest & Funniest AI Companion
               </p>
             </div>
 
@@ -1062,7 +1189,7 @@ Formatting:
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Your Name"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm text-white"
                     required
                   />
                 </div>
@@ -1076,7 +1203,7 @@ Formatting:
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="user@example.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm text-white"
                   required
                 />
               </div>
@@ -1089,7 +1216,7 @@ Formatting:
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-[#2e6eff]/60 transition-all text-sm text-white"
                   required
                 />
               </div>
@@ -1102,7 +1229,7 @@ Formatting:
 
               <button
                 type="submit"
-                className="w-full bg-[#2e6eff] text-white font-bold py-3 rounded-xl mt-2 hover:bg-[#255fd9] transition-all shadow-md shadow-[#2e6eff]/30 flex items-center justify-center gap-2"
+                className="w-full bg-[#2e6eff] hover:bg-[#255fd9] text-white font-bold py-3 rounded-xl mt-2 transition-all shadow-lg shadow-[#2e6eff]/30 flex items-center justify-center gap-2"
               >
                 {authMode === "login" ? (
                   <LogIn className="w-4 h-4" />
@@ -1132,7 +1259,7 @@ Formatting:
             </button>
           </div>
 
-          <p className="text-center text-xs text-[#9aa0a6] pb-2">
+          <p className="text-center text-xs text-[#9aa0a6] pt-4">
             {authMode === "login"
               ? "Don't have an account?"
               : "Already have an account?"}
@@ -1151,489 +1278,525 @@ Formatting:
   }
 
   return (
-    <div className="h-full w-full bg-[#0a0b0e] flex items-center justify-center p-0 md:p-4 overflow-hidden select-none">
-      {/* Phone Shell Container */}
-      <div className="w-full h-full md:max-w-[430px] md:h-[94vh] md:max-h-[860px] md:rounded-[46px] md:border-[7px] md:border-[#22242a] md:shadow-[0_25px_90px_rgba(0,0,0,0.9)] flex flex-col bg-[#131314] text-[#e3e3e3] relative overflow-hidden ring-1 ring-white/10">
-        
-        {/* Dynamic Island / Phone Top Status Bar */}
-        <div className="w-full pt-2.5 pb-1.5 px-6 flex items-center justify-between text-[11px] font-semibold text-[#8e9297] bg-[#131314] border-b border-white/5 shrink-0 z-30 select-none">
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-white/90">9:41</span>
-          </div>
+    <div className="h-full w-full bg-[#0a0b0e] flex flex-col text-[#e3e3e3] overflow-hidden select-none relative">
+      {/* Dynamic Ambient Background Glow */}
+      <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-[#2e6eff]/10 blur-[150px] rounded-full pointer-events-none"></div>
+      <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-[#7bddff]/10 blur-[150px] rounded-full pointer-events-none"></div>
 
-          {/* Dynamic Island Pill */}
-          <div className="px-3 py-1 bg-black/60 rounded-full border border-white/10 flex items-center gap-2 shadow-inner">
-            <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#2e6eff] animate-ping' : 'bg-emerald-400 animate-pulse'}`}></div>
-            <span className="text-[10px] text-white/80 font-bold tracking-wider uppercase">
-              {isActive ? "LIVE CALL" : "ZOZO LINK"}
-            </span>
+      {/* Top Navigation Bar (Full Width) */}
+      <header className="h-15 flex items-center justify-between px-4 md:px-8 border-b border-white/10 bg-[#131418]/90 backdrop-blur-md shrink-0 z-30">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-lg shadow-[#2e6eff]/30">
+            <Zap className="w-5 h-5 text-white" fill="currentColor" />
           </div>
-
-          <div className="flex items-center gap-1.5 text-white/80">
-            <span className="text-[10px] font-bold">5G</span>
-            <div className="w-4 h-2 border border-white/40 rounded-sm p-0.5 flex items-center">
-              <div className="w-full h-full bg-emerald-400 rounded-2xs"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile App Header */}
-        <header className="h-14 flex items-center justify-between px-4 border-b border-white/5 bg-[#17181a] shrink-0 z-20">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-md">
-              <Zap className="w-4 h-4 text-white" fill="currentColor" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold tech-title tracking-tight text-white flex items-center gap-1.5">
-                <span>ZoZo AI</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#2e6eff]/20 text-[#7bddff] border border-[#2e6eff]/30 font-mono">
-                  v3.1
-                </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black tech-title tracking-tight text-white">
+                ZoZo AI
               </h1>
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#2e6eff]/20 text-[#7bddff] border border-[#2e6eff]/30 font-medium">
+                <Smile className="w-3 h-3 text-[#7bddff]" />
+                <span>Funny & Best AI</span>
+              </span>
             </div>
+            <p className="text-[10px] text-[#9aa0a6] hidden md:block">
+              Super-intelligent • Witty Humor • Voice Call • Imagen 3
+            </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsVoiceModalOpen(true)}
-              className="px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#8ab4f8] text-[11px] font-bold flex items-center gap-1.5 transition-all"
-              title="Voice Engine"
-            >
-              <Radio className="w-3 h-3" />
-              <span className="max-w-[60px] truncate">{selectedVoice}</span>
-            </button>
-
-            <button
-              onClick={() => setIsPluginsModalOpen(true)}
-              className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#c58af9] transition-all"
-              title="Settings & Key"
-            >
-              <Puzzle className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={handleLogout}
-              className="p-1.5 rounded-full bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-all"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </header>
-
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col relative bg-[#131314]">
-          {viewMode === "chat" ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Message Feed */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-4">
-                <div className="flex flex-col gap-4">
-                  {messages.length === 0 && !isSearching && !isGeneratingImage && (
-                    <div className="min-h-[50vh] flex flex-col items-center justify-center text-center gap-5 p-2 animate-fade-in">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-xl shadow-[#2e6eff]/20">
-                        <Sparkles className="w-7 h-7 text-white animate-pulse" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <h2 className="text-lg font-bold text-white tracking-tight">
-                          नमस्ते {getUserName()}!
-                        </h2>
-                        <p className="text-xs text-[#9aa0a6] max-w-[260px] mx-auto">
-                          मैं ZoZo AI हूँ। आप मुझसे बात कर सकते हैं, फोटो बनवा सकते हैं, या लाइव कॉल कर सकते हैं।
-                        </p>
-                      </div>
-
-                      {/* Quick Prompt Cards */}
-                      <div className="grid grid-cols-1 gap-2 w-full max-w-[320px]">
-                        {[
-                          {
-                            text: "एक खूबसूरत वाइट टाइगर की फोटो बनाओ",
-                            icon: <ImageIcon className="w-3.5 h-3.5 text-[#7bddff]" />,
-                          },
-                          {
-                            text: "आज सोने और चांदी का लाइव रेट क्या है?",
-                            icon: <Search className="w-3.5 h-3.5 text-[#8ab4f8]" />,
-                          },
-                          {
-                            text: "हिंदी में मजेदार कहानी सुनाओ",
-                            icon: <Zap className="w-3.5 h-3.5 text-[#c58af9]" />,
-                          },
-                        ].map((sug, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setChatInput(sug.text)}
-                            className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-left text-xs transition-all hover:border-[#2e6eff]/40 flex items-center gap-2.5"
-                          >
-                            <div className="w-7 h-7 rounded-lg bg-black/40 flex items-center justify-center shrink-0">
-                              {sug.icon}
-                            </div>
-                            <span className="truncate text-white/90">{sug.text}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Render Messages */}
-                  {messages.map((m, i) => (
-                    <div
-                      key={i}
-                      className={`flex gap-2.5 animate-fade-in ${
-                        m.role === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      {m.role !== "user" && (
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-0.5 shadow-md">
-                          <Zap className="w-3.5 h-3.5 text-white" fill="currentColor" />
-                        </div>
-                      )}
-
-                      <div
-                        className={`flex flex-col gap-1.5 max-w-[85%] ${
-                          m.role === "user" ? "items-end" : "items-start"
-                        }`}
-                      >
-                        <div className={m.role === "user" ? "user-msg" : "model-msg bg-[#1c1d20] border border-white/5 p-3 rounded-2xl"}>
-                          <div className="markdown-body text-[0.88rem] leading-relaxed">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                code({
-                                  node,
-                                  inline,
-                                  className,
-                                  children,
-                                  ...props
-                                }: any) {
-                                  const match = /language-(\w+)/.exec(
-                                    className || "",
-                                  );
-                                  return !inline && match ? (
-                                    <SyntaxHighlighter
-                                      style={vscDarkPlus}
-                                      language={match[1]}
-                                      PreTag="div"
-                                      {...props}
-                                    >
-                                      {String(children).replace(/\n$/, "")}
-                                    </SyntaxHighlighter>
-                                  ) : (
-                                    <code className={className} {...props}>
-                                      {children}
-                                    </code>
-                                  );
-                                },
-                              }}
-                            >
-                              {m.text}
-                            </ReactMarkdown>
-                          </div>
-
-                          {m.generatedImage && (
-                            <div className="mt-3 rounded-xl overflow-hidden border border-white/10 shadow-lg group relative">
-                              <img
-                                src={m.generatedImage}
-                                alt="Generated"
-                                className="w-full h-auto object-cover max-h-[260px]"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                                <button
-                                  onClick={() => setPreviewImage(m.generatedImage!)}
-                                  className="p-2 rounded-full bg-black/60 text-white hover:bg-black"
-                                >
-                                  <Search className="w-5 h-5" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const link = document.createElement("a");
-                                    link.href = m.generatedImage!;
-                                    link.download = `ZoZoAI_Asset_${Date.now()}.png`;
-                                    link.click();
-                                  }}
-                                  className="p-2 rounded-full bg-[#2e6eff] text-white hover:bg-[#255fd9]"
-                                >
-                                  <Download className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {m.role === "model" && (
-                            <div className="flex items-center gap-3 mt-2 pt-1.5 border-t border-white/5 text-[11px] text-[#9aa0a6]">
-                              <button
-                                onClick={() => speakText(cleanTextForSpeech(m.text))}
-                                className="flex items-center gap-1 hover:text-[#7bddff] transition-colors py-0.5 px-1 rounded hover:bg-white/5"
-                                title="Listen audio"
-                              >
-                                <Volume2 className="w-3 h-3" />
-                                <span>Play</span>
-                              </button>
-                              <button
-                                onClick={() => navigator.clipboard.writeText(m.text)}
-                                className="hover:text-white transition-colors py-0.5 px-1 rounded hover:bg-white/5"
-                              >
-                                Copy
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {m.groundingUrls && m.groundingUrls.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {m.groundingUrls.slice(0, 3).map((u, idx) => (
-                              <a
-                                key={idx}
-                                href={u.uri}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center gap-1 px-2.5 py-0.5 bg-[#1e1f20] border border-white/5 rounded-full text-[10px] text-[#7bddff] hover:bg-[#282a2d] transition-all truncate max-w-[160px]"
-                              >
-                                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                                <span className="truncate">{u.title}</span>
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Streaming Indicator */}
-                  {isStreaming && (
-                    <div className="flex gap-2.5 animate-fade-in justify-start">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-0.5 shadow-md">
-                        <Zap className="w-3.5 h-3.5 text-white" fill="currentColor" />
-                      </div>
-                      <div className="model-msg bg-[#1c1d20] border border-white/5 p-3 rounded-2xl max-w-[85%]">
-                        <div className="markdown-body text-[0.88rem] is-typing">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {streamingText}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Search Status */}
-                  {isSearching && (
-                    <div className="flex gap-2.5 animate-fade-in">
-                      <div className="w-7 h-7 rounded-full bg-[#1e1f20] border border-white/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <Search className="w-3.5 h-3.5 text-[#7bddff] animate-pulse" />
-                      </div>
-                      <div className="bg-white/5 border border-white/5 p-3 rounded-2xl max-w-[85%]">
-                        <div className="flex items-center gap-1.5 text-[10px] text-[#7bddff] font-bold uppercase tracking-wider mb-1">
-                          <div className="w-1.5 h-1.5 bg-[#7bddff] rounded-full animate-ping"></div>
-                          <span>ZoZo Live Search</span>
-                        </div>
-                        <p className="text-xs text-[#9aa0a6] italic">
-                          {searchStatus}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Generating Image Status */}
-                  {isGeneratingImage && (
-                    <div className="flex gap-2.5 animate-fade-in">
-                      <div className="w-7 h-7 rounded-full bg-[#1e1f20] border border-white/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <Cpu className="w-3.5 h-3.5 text-[#f97316] animate-spin" />
-                      </div>
-                      <div className="bg-white/5 border border-white/5 p-3 rounded-2xl max-w-[85%]">
-                        <div className="flex items-center gap-1.5 text-[10px] text-[#f97316] font-bold uppercase tracking-wider mb-1">
-                          <div className="w-1.5 h-1.5 bg-[#f97316] rounded-full animate-ping"></div>
-                          <span>ZoZo Photo Creator Studio</span>
-                        </div>
-                        <p className="text-xs text-[#9aa0a6] italic">
-                          उच्च गुणवत्ता में फोटो तैयार हो रही है...
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={scrollRef} />
-                </div>
-              </div>
-
-              {/* Chat Input Bar */}
-              <div className="p-3 bg-[#17181a] border-t border-white/5 shrink-0">
-                <div className="chat-input-container flex items-end gap-1.5 px-2.5 py-1.5 shadow-md border border-white/5">
-                  {/* Dictation Button */}
-                  <button
-                    onClick={toggleDictation}
-                    className={`p-2 rounded-full transition-all shrink-0 ${
-                      isDictating
-                        ? "bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-500/50 animate-pulse"
-                        : "hover:bg-white/5 text-[#c4c7c5]"
-                    }`}
-                    title="बोल कर टाइप करें"
-                  >
-                    <Mic className="w-4 h-4" />
-                  </button>
-
-                  {/* Voice Output Toggle */}
-                  <button
-                    onClick={() => {
-                      if (isVoiceEnabled) stopAllSpeech();
-                      setIsVoiceEnabled(!isVoiceEnabled);
-                    }}
-                    className={`p-2 rounded-full transition-all shrink-0 hover:bg-white/5 ${
-                      isVoiceEnabled ? "text-[#7bddff]" : "text-red-400"
-                    }`}
-                    title={isVoiceEnabled ? "Mute Voice" : "Unmute Voice"}
-                  >
-                    {isVoiceEnabled ? (
-                      <Volume2 className="w-4 h-4" />
-                    ) : (
-                      <VolumeX className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  {/* Textarea */}
-                  <textarea
-                    rows={1}
-                    value={chatInput}
-                    onChange={(e) => {
-                      setChatInput(e.target.value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = e.target.scrollHeight + "px";
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleAction();
-                      }
-                    }}
-                    placeholder="Ask ZoZo AI or Photo banao..."
-                    className="flex-1 bg-transparent outline-none text-[#e3e3e3] placeholder:text-[#9aa0a6] py-1.5 resize-none max-h-32 custom-scrollbar text-xs md:text-sm"
-                    disabled={isSearching || isGeneratingImage}
-                  />
-
-                  {/* Send Button */}
-                  <button
-                    onClick={handleAction}
-                    disabled={
-                      !chatInput.trim() ||
-                      isSearching ||
-                      isGeneratingImage ||
-                      isStreaming
-                    }
-                    className={`p-2 rounded-full transition-all shrink-0 ${
-                      chatInput.trim()
-                        ? "bg-[#2e6eff] text-white shadow-md"
-                        : "text-[#5f6368] cursor-not-allowed"
-                    }`}
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* Gallery View */
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-base font-bold text-white">Neural Gallery</h2>
-                  <p className="text-[11px] text-[#9aa0a6]">ZoZo AI Photo Creations</p>
-                </div>
-                <span className="px-2.5 py-1 bg-white/5 rounded-full text-[10px] font-bold text-[#7bddff] border border-white/5">
-                  {gallery.length} Photos
-                </span>
-              </div>
-
-              {gallery.length === 0 ? (
-                <div className="h-[40vh] flex flex-col items-center justify-center text-center opacity-30 gap-2">
-                  <ImageIcon className="w-12 h-12" />
-                  <p className="text-xs font-bold uppercase tracking-wider">No Photos Yet</p>
-                  <p className="text-[11px] italic">"ZoZo, draw a tiger photo banao"</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2.5">
-                  {gallery.map((img, idx) => (
-                    <div
-                      key={idx}
-                      className="group relative aspect-square rounded-xl overflow-hidden border border-white/5 hover:border-[#2e6eff]/50 transition-all shadow-md cursor-pointer"
-                      onClick={() => setPreviewImage(img)}
-                    >
-                      <img
-                        src={img}
-                        alt={`Asset ${idx}`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-2">
-                        <span className="text-[9px] font-bold text-white">#{gallery.length - idx}</span>
-                        <Download className="w-3.5 h-3.5 text-white" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Bottom Phone Navigation Tab Bar */}
-        <nav className="h-14 bg-[#17181a] border-t border-white/5 flex items-center justify-around px-2 shrink-0 z-30 select-none">
-          <button
-            onClick={() => setViewMode("chat")}
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
-              viewMode === "chat" ? "text-[#7bddff]" : "text-[#8e9297] hover:text-white"
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span className="text-[10px] font-semibold">Chat</span>
-          </button>
-
-          <button
-            onClick={() => setViewMode("gallery")}
-            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
-              viewMode === "gallery" ? "text-[#7bddff]" : "text-[#8e9297] hover:text-white"
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            <span className="text-[10px] font-semibold">Gallery</span>
-          </button>
-
-          {/* Central Direct Speak-to-Speak Call Action */}
+        {/* Header Controls */}
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Quick Call AI Button */}
           <button
             onClick={() => {
               setIsSpeakToSpeakOpen(true);
               if (!isActive) startLiveSession();
             }}
-            className="flex flex-col items-center justify-center -mt-5"
-            title="Open Speak-to-Speak Call"
+            className="flex items-center gap-2 py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-[#2e6eff] to-[#7bddff] text-white font-bold text-xs shadow-md shadow-[#2e6eff]/25 hover:scale-105 active:scale-95 transition-all"
+            title="Start Live Speak-to-Speak Call"
           >
-            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center text-white shadow-[0_4px_20px_rgba(46,110,255,0.45)] hover:scale-105 transition-transform active:scale-95">
-              <Phone className="w-5 h-5 fill-current" />
-            </div>
-            <span className="text-[10px] font-bold text-[#7bddff] mt-0.5">Call AI</span>
+            <Phone className="w-3.5 h-3.5 fill-current" />
+            <span className="hidden sm:inline">Call AI</span>
           </button>
 
+          {/* 3-Points / 3-Dots Drawer Trigger Button */}
           <button
-            onClick={() => setIsVoiceModalOpen(true)}
-            className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[#8e9297] hover:text-white transition-all"
+            onClick={() => setIsDrawerOpen(true)}
+            className="p-2 md:px-3 md:py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center gap-1.5 transition-all shadow-md group"
+            title="More Options (Gallery, Voice, Plugins, Settings)"
           >
-            <Radio className="w-4 h-4" />
-            <span className="text-[10px] font-semibold">Voice</span>
+            <MoreVertical className="w-4 h-4 text-[#7bddff] group-hover:rotate-90 transition-transform duration-200" />
+            <span className="hidden sm:inline text-xs font-semibold text-[#e3e3e3]">Options</span>
+            {gallery.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-[#7bddff] animate-pulse"></span>
+            )}
           </button>
-
-          <button
-            onClick={() => {
-              setMessages([]);
-              setViewMode("chat");
-            }}
-            className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[#8e9297] hover:text-white transition-all"
-            title="New Chat"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-[10px] font-semibold">New</span>
-          </button>
-        </nav>
-
-        {/* Bottom Home Indicator Bar (Mobile look) */}
-        <div className="w-full h-3 bg-[#17181a] flex items-center justify-center shrink-0">
-          <div className="w-24 h-1 bg-white/20 rounded-full"></div>
         </div>
+      </header>
+
+      {/* Main Content Area (Full Screen Responsive) */}
+      <div className="flex-1 overflow-hidden flex flex-col relative z-10">
+        {viewMode === "chat" ? (
+          <div className="flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full px-3 md:px-6">
+            {/* Message Feed */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar py-4 md:py-6">
+              <div className="flex flex-col gap-5">
+                {messages.length === 0 && !isSearching && !isGeneratingImage && (
+                  <div className="min-h-[55vh] flex flex-col items-center justify-center text-center gap-6 p-4 animate-fade-in">
+                    <div className="w-18 h-18 rounded-3xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-2xl shadow-[#2e6eff]/30 border border-white/20">
+                      <Sparkles className="w-9 h-9 text-white animate-pulse" />
+                    </div>
+                    <div className="flex flex-col gap-2 max-w-lg">
+                      <h2 className="text-2xl font-black text-white tracking-tight flex items-center justify-center gap-2">
+                        <span>Namaste {getUserName()}!</span>
+                        <span className="inline-block animate-bounce">😄</span>
+                      </h2>
+                      <p className="text-sm text-[#9aa0a6] leading-relaxed">
+                        Main hoon <b>ZoZo AI</b> — duniya ka sabse <b>BEST, SMART aur FUNNY</b> AI companion! Bolo Boss, aaj kya scene hai?
+                      </p>
+                    </div>
+
+                    {/* Quick Funny & Smart Prompt Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl mt-2">
+                      {[
+                        {
+                          text: "Ek mast funny joke sunao bhai 🤣",
+                          icon: <Laugh className="w-4 h-4 text-amber-400" />,
+                          desc: "Full comedy & laughs guaranteed",
+                        },
+                        {
+                          text: "Ek funny shayari ya Bollywood dialogue bolo 🎭",
+                          icon: <Smile className="w-4 h-4 text-[#c58af9]" />,
+                          desc: "Fun masti in dramatic style",
+                        },
+                        {
+                          text: "Space mein udti hui funny cat ki photo banao 🐱",
+                          icon: <ImageIcon className="w-4 h-4 text-[#7bddff]" />,
+                          desc: "Imagen 3 Ultra HD Art",
+                        },
+                        {
+                          text: "Aaj gold aur silver ka live rate kya hai? 💰",
+                          icon: <Search className="w-4 h-4 text-emerald-400" />,
+                          desc: "Google Search Live Real-time Data",
+                        },
+                      ].map((sug, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setChatInput(sug.text)}
+                          className="p-3.5 bg-[#17181c]/90 hover:bg-[#1f2026] border border-white/10 rounded-2xl text-left transition-all hover:border-[#2e6eff]/50 hover:shadow-lg hover:shadow-[#2e6eff]/10 flex items-start gap-3 group"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            {sug.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="block text-xs font-semibold text-white/90 group-hover:text-white truncate">
+                              {sug.text}
+                            </span>
+                            <span className="block text-[10px] text-[#9aa0a6] mt-0.5">
+                              {sug.desc}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Render Messages */}
+                {messages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`flex gap-3 md:gap-4 animate-fade-in ${
+                      m.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    {m.role !== "user" && (
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-1 shadow-md">
+                        <Zap className="w-4 h-4 text-white" fill="currentColor" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`flex flex-col gap-1.5 max-w-[85%] md:max-w-[80%] ${
+                        m.role === "user" ? "items-end" : "items-start"
+                      }`}
+                    >
+                      <div
+                        className={
+                          m.role === "user"
+                            ? "user-msg bg-[#2e6eff] text-white px-4 py-3 rounded-2xl shadow-md"
+                            : "model-msg bg-[#17181c] border border-white/10 p-4 md:p-5 rounded-2xl shadow-lg"
+                        }
+                      >
+                        <div className="markdown-body text-[0.92rem] leading-relaxed text-[#e3e3e3]">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              code({
+                                node,
+                                inline,
+                                className,
+                                children,
+                                ...props
+                              }: any) {
+                                const match = /language-(\w+)/.exec(
+                                  className || "",
+                                );
+                                return !inline && match ? (
+                                  <SyntaxHighlighter
+                                    style={vscDarkPlus}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    {...props}
+                                  >
+                                    {String(children).replace(/\n$/, "")}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                );
+                              },
+                            }}
+                          >
+                            {m.text}
+                          </ReactMarkdown>
+                        </div>
+
+                        {m.generatedImage && (
+                          <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 shadow-2xl group relative max-w-md">
+                            <img
+                              src={m.generatedImage}
+                              alt="Generated"
+                              className="w-full h-auto object-cover max-h-[360px]"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-xs">
+                              <button
+                                onClick={() => setPreviewImage(m.generatedImage!)}
+                                className="p-3 rounded-full bg-black/70 text-white hover:bg-black transition-all shadow-lg"
+                                title="Zoom Image"
+                              >
+                                <Search className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const link = document.createElement("a");
+                                  link.href = m.generatedImage!;
+                                  link.download = `ZoZoAI_Asset_${Date.now()}.png`;
+                                  link.click();
+                                }}
+                                className="p-3 rounded-full bg-[#2e6eff] text-white hover:bg-[#255fd9] transition-all shadow-lg"
+                                title="Download Full Resolution"
+                              >
+                                <Download className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {m.role === "model" && (
+                          <div className="flex items-center gap-4 mt-3 pt-2 border-t border-white/5 text-xs text-[#9aa0a6]">
+                            <button
+                              onClick={() => speakText(cleanTextForSpeech(m.text))}
+                              className="flex items-center gap-1.5 hover:text-[#7bddff] transition-colors py-1 px-2 rounded-lg hover:bg-white/5 font-medium"
+                              title="Listen with AI Voice"
+                            >
+                              <Volume2 className="w-3.5 h-3.5" />
+                              <span>Listen</span>
+                            </button>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(m.text)}
+                              className="hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/5 font-medium"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {m.groundingUrls && m.groundingUrls.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {m.groundingUrls.slice(0, 4).map((u, idx) => (
+                            <a
+                              key={idx}
+                              href={u.uri}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1 bg-[#1e1f24] border border-white/10 rounded-full text-xs text-[#7bddff] hover:bg-[#282a30] transition-all truncate max-w-[220px]"
+                            >
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{u.title}</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Streaming Indicator */}
+                {isStreaming && (
+                  <div className="flex gap-3 md:gap-4 animate-fade-in justify-start">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-1 shadow-md">
+                      <Zap className="w-4 h-4 text-white" fill="currentColor" />
+                    </div>
+                    <div className="model-msg bg-[#17181c] border border-white/10 p-4 md:p-5 rounded-2xl shadow-lg max-w-[85%] md:max-w-[80%]">
+                      <div className="markdown-body text-[0.92rem] text-[#e3e3e3] is-typing">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {streamingText}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Status */}
+                {isSearching && (
+                  <div className="flex gap-3 animate-fade-in">
+                    <div className="w-8 h-8 rounded-xl bg-[#1e1f24] border border-white/10 flex items-center justify-center shrink-0 mt-1">
+                      <Search className="w-4 h-4 text-[#7bddff] animate-pulse" />
+                    </div>
+                    <div className="bg-[#17181c] border border-white/10 p-3.5 rounded-2xl max-w-[85%]">
+                      <div className="flex items-center gap-2 text-xs text-[#7bddff] font-bold uppercase tracking-wider mb-1">
+                        <div className="w-2 h-2 bg-[#7bddff] rounded-full animate-ping"></div>
+                        <span>ZoZo Live Web Search</span>
+                      </div>
+                      <p className="text-xs text-[#9aa0a6] italic">
+                        {searchStatus}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Generating Image Status */}
+                {isGeneratingImage && (
+                  <div className="flex gap-3 animate-fade-in">
+                    <div className="w-8 h-8 rounded-xl bg-[#1e1f24] border border-white/10 flex items-center justify-center shrink-0 mt-1">
+                      <Cpu className="w-4 h-4 text-[#f97316] animate-spin" />
+                    </div>
+                    <div className="bg-[#17181c] border border-white/10 p-3.5 rounded-2xl max-w-[85%]">
+                      <div className="flex items-center gap-2 text-xs text-[#f97316] font-bold uppercase tracking-wider mb-1">
+                        <div className="w-2 h-2 bg-[#f97316] rounded-full animate-ping"></div>
+                        <span>ZoZo Photo Creator Studio</span>
+                      </div>
+                      <p className="text-xs text-[#9aa0a6] italic">
+                        Ultra-HD photo create ho rahi hai...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={scrollRef} />
+              </div>
+            </div>
+
+            {/* Expansive Floating Chat Input Bar */}
+            <div className="py-3 md:py-4 shrink-0">
+              <div className="bg-[#17181c]/95 border border-white/15 rounded-2xl p-2 md:p-3 shadow-2xl flex items-end gap-2 backdrop-blur-xl">
+                {/* Dictation Button */}
+                <button
+                  onClick={toggleDictation}
+                  className={`p-2.5 rounded-xl transition-all shrink-0 ${
+                    isDictating
+                      ? "bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-500/50 animate-pulse"
+                      : "hover:bg-white/5 text-[#c4c7c5]"
+                  }`}
+                  title="Bol kar type karein (Voice Typing in Hindi & English)"
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+
+                {/* Voice Output Toggle */}
+                <button
+                  onClick={() => {
+                    if (isVoiceEnabled) stopAllSpeech();
+                    setIsVoiceEnabled(!isVoiceEnabled);
+                  }}
+                  className={`p-2.5 rounded-xl transition-all shrink-0 hover:bg-white/5 ${
+                    isVoiceEnabled ? "text-[#7bddff]" : "text-red-400"
+                  }`}
+                  title={isVoiceEnabled ? "Mute AI Voice" : "Unmute AI Voice"}
+                >
+                  {isVoiceEnabled ? (
+                    <Volume2 className="w-4 h-4" />
+                  ) : (
+                    <VolumeX className="w-4 h-4" />
+                  )}
+                </button>
+
+                {/* Quick Photo Creator Button */}
+                <button
+                  onClick={() => {
+                    setChatInput("Ek ultra-HD photorealistic photo banao: ");
+                    if (textareaRef.current) {
+                      textareaRef.current.focus();
+                    }
+                  }}
+                  className="p-2.5 rounded-xl transition-all shrink-0 bg-[#c58af9]/10 hover:bg-[#c58af9]/20 text-[#c58af9] border border-[#c58af9]/20"
+                  title="Make HD Photo / Image with AI"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </button>
+
+                {/* 3-Points / 3-Dots Drawer Trigger Button in Input Bar */}
+                <button
+                  onClick={() => setIsDrawerOpen(true)}
+                  className="p-2.5 rounded-xl transition-all shrink-0 bg-white/5 hover:bg-white/10 text-[#7bddff] border border-white/10"
+                  title="Open Options Drawer (Gallery, Voice, Plugins, New Chat)"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+
+                {/* Textarea */}
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  value={chatInput}
+                  onChange={(e) => {
+                    setChatInput(e.target.value);
+                    e.target.style.height = "auto";
+                    e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAction();
+                    }
+                  }}
+                  placeholder="ZoZo AI se kuch bhi pucho, photo banao ya joke suno..."
+                  className="flex-1 bg-transparent outline-none text-[#e3e3e3] placeholder:text-[#9aa0a6] py-1.5 resize-none max-h-36 custom-scrollbar text-sm"
+                  disabled={isSearching || isGeneratingImage}
+                />
+
+                {/* Send Button */}
+                <button
+                  onClick={handleAction}
+                  disabled={
+                    !chatInput.trim() ||
+                    isSearching ||
+                    isGeneratingImage ||
+                    isStreaming
+                  }
+                  className={`p-2.5 rounded-xl transition-all shrink-0 font-bold ${
+                    chatInput.trim()
+                      ? "bg-[#2e6eff] hover:bg-[#255fd9] text-white shadow-lg shadow-[#2e6eff]/30 cursor-pointer"
+                      : "text-[#5f6368] bg-white/5 cursor-not-allowed"
+                  }`}
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Full Screen Gallery View */
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 max-w-6xl mx-auto w-full">
+            <div className="flex items-center justify-between mb-6 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setViewMode("chat")}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white flex items-center gap-1.5 text-xs font-semibold border border-white/10 transition-all"
+                  title="Return to Chat"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Back to Chat</span>
+                </button>
+                <div>
+                  <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
+                    <span>Neural Photo Gallery</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#2e6eff]/20 text-[#7bddff] border border-[#2e6eff]/30 font-mono">
+                      {gallery.length} Photos
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#9aa0a6] mt-0.5">
+                    ZoZo AI dwara banayi gayi sabhi high-resolution photos
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsDrawerOpen(true)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#7bddff]"
+                title="Options Menu"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+            </div>
+
+            {gallery.length === 0 ? (
+              <div className="h-[50vh] flex flex-col items-center justify-center text-center opacity-50 gap-3">
+                <ImageIcon className="w-16 h-16 text-[#7bddff]" />
+                <p className="text-sm font-bold uppercase tracking-wider text-white">No Photos Created Yet</p>
+                <p className="text-xs text-[#9aa0a6]">
+                  Chat mein kahein: <span className="text-[#7bddff]">"Space mein udti hui funny cat ki photo banao"</span>
+                </p>
+                <button
+                  onClick={() => setViewMode("chat")}
+                  className="mt-3 px-4 py-2 rounded-xl bg-[#2e6eff] text-white text-xs font-bold shadow-lg shadow-[#2e6eff]/30"
+                >
+                  Go to Chat & Create Photo
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {gallery.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10 hover:border-[#2e6eff] transition-all shadow-xl cursor-pointer"
+                    onClick={() => setPreviewImage(img)}
+                  >
+                    <img
+                      src={img}
+                      alt={`Asset ${idx}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-3">
+                      <span className="text-xs font-bold text-white">Photo #{gallery.length - idx}</span>
+                      <div className="p-1.5 bg-[#2e6eff] rounded-lg text-white">
+                        <Download className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* 3-Points / 3-Dots Slide-in Drawer Menu */}
+      <DrawerMenu
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        viewMode={viewMode}
+        onSelectViewMode={setViewMode}
+        selectedVoice={selectedVoice}
+        onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
+        onOpenPluginsModal={() => setIsPluginsModalOpen(true)}
+        onStartLiveCall={() => {
+          setIsSpeakToSpeakOpen(true);
+          if (!isActive) startLiveSession();
+        }}
+        onNewChat={() => {
+          setMessages([]);
+          setViewMode("chat");
+        }}
+        onPromptImage={() => {
+          setChatInput("Ek ultra-HD photorealistic photo banao: ");
+          setTimeout(() => {
+            if (textareaRef.current) {
+              textareaRef.current.focus();
+            }
+          }, 100);
+        }}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        userName={getUserName()}
+        userEmail={user?.email || undefined}
+        onLogout={handleLogout}
+        galleryCount={gallery.length}
+      />
 
       {/* Speak-to-Speak Direct Call Interface Modal */}
       <SpeakToSpeakCall

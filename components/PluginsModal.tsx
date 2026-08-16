@@ -58,12 +58,12 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
     const rawKey = apiKeyInput.trim().replace(/^["'`]|["'`]$/g, '').trim();
     if (!rawKey) {
       setTestingStatus('error');
-      setStatusMessage('कृपया वैध Google AI Studio API Key दर्ज करें।');
+      setStatusMessage('Please valid Google AI Studio API Key enter karein.');
       return;
     }
 
     setTestingStatus('testing');
-    setStatusMessage('Google AI Studio से कनेक्शन जाँचा जा रहा है...');
+    setStatusMessage('Google AI Studio se connection check ho raha hai...');
 
     let isValid = false;
     let errorDetail = '';
@@ -95,26 +95,26 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
         }
       } catch (sdkErr: any) {
         if (!errorDetail) {
-          errorDetail = sdkErr?.message || 'अज्ञात त्रुटि';
+          errorDetail = sdkErr?.message || 'Unknown error';
         }
       }
     }
 
     if (isValid) {
       setTestingStatus('success');
-      setStatusMessage('✓ असली Google AI Studio API Key सफलतापूर्वक कनेक्ट हो गई!');
+      setStatusMessage('✓ Original Google AI Studio API Key successfully connect ho gayi!');
       onSaveApiKey(rawKey);
     } else {
       setTestingStatus('error');
       if (errorDetail.includes('API_KEY_INVALID') || errorDetail.includes('400') || errorDetail.includes('403')) {
-        setStatusMessage('गलत API Key! यह Google AI Studio की मान्य key नहीं है। कृपया aistudio.google.com से AIzaSy... वाली key कॉपी करें।');
+        setStatusMessage('Invalid API Key! Yeh Google AI Studio ki valid key nahi hai. Please aistudio.google.com se AIzaSy... wali key copy karein.');
       } else if (errorDetail.includes('429') || errorDetail.includes('RESOURCE_EXHAUSTED')) {
-        setStatusMessage('इस Key का कोटा पूरा हो चुका है, लेकिन Key सही है और सेव कर दी गई है।');
+        setStatusMessage('Is Key ka quota pura ho chuka hai, lekin Key valid hai aur save kar di gayi hai.');
         onSaveApiKey(rawKey);
         setTestingStatus('success');
       } else {
         // Allow saving anyway in case of network variance
-        setStatusMessage(`चेतावनी: ${errorDetail.slice(0, 90)}. अगर आपकी Key असली है तो "Direct Save" पर क्लिक करें।`);
+        setStatusMessage(`Warning: ${errorDetail.slice(0, 90)}. Agar aapki Key authentic hai to "Direct Save" par click karein.`);
       }
     }
   };
@@ -123,14 +123,14 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
     const cleaned = apiKeyInput.trim().replace(/^["'`]|["'`]$/g, '').trim();
     onSaveApiKey(cleaned);
     setTestingStatus('success');
-    setStatusMessage(cleaned ? '✓ API Key तुरंत सेव कर दी गई है और सक्रिय है!' : 'डिफ़ॉल्ट Key पर रीसेट किया गया।');
+    setStatusMessage(cleaned ? '✓ API Key turant save kar di gayi hai aur active hai!' : 'Default Key par reset kar diya gaya.');
   };
 
   const handleRemoveKey = () => {
     setApiKeyInput('');
     onSaveApiKey('');
     setTestingStatus('idle');
-    setStatusMessage('कस्टम API Key हटा दी गई है। डिफ़ॉल्ट Key का उपयोग होगा।');
+    setStatusMessage('Custom API Key hata di gayi hai. Default Key use hogi.');
   };
 
   const togglePlugin = (key: keyof PluginSettings) => {
@@ -157,7 +157,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-[#9aa0a6]">
-                Google AI Studio API Key जोड़ें और फीचर्स कस्टमाइज़ करें
+                Google AI Studio API Key add karein aur features customize karein
               </p>
             </div>
           </div>
@@ -186,7 +186,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                 rel="noreferrer"
                 className="text-xs text-[#7bddff] hover:underline flex items-center gap-1 font-medium bg-[#2e6eff]/10 px-2.5 py-1 rounded-lg border border-[#2e6eff]/20"
               >
-                <span>मुफ़्त Key पाएँ</span>
+                <span>Free Key Paayein</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -194,12 +194,12 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
             {/* Quick 3-Step Guide */}
             <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1.5 text-xs text-[#c4c7c5]">
               <div className="font-semibold text-white text-[11px] uppercase tracking-wider text-[#7bddff]">
-                🔑 असली (Real) Gemini API Key कैसे लें:
+                🔑 Real Gemini API Key Kaise Lein:
               </div>
               <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#9aa0a6]">
-                <li><b className="text-white">"मुफ़्त Key पाएँ"</b> बटन पर क्लिक करके AI Studio खोलें।</li>
-                <li><b className="text-white">"Create API key"</b> पर क्लिक करें और Project चुनें।</li>
-                <li>Key कॉपी करें (यह <code className="text-[#7bddff] bg-black/40 px-1 py-0.5 rounded">AIzaSy...</code> से शुरू होती है) और नीचे पेस्ट करें।</li>
+                <li><b className="text-white">"Free Key Paayein"</b> button par click karke AI Studio kholein.</li>
+                <li><b className="text-white">"Create API key"</b> par click karein aur Project select karein.</li>
+                <li>Key copy karein (yeh <code className="text-[#7bddff] bg-black/40 px-1 py-0.5 rounded">AIzaSy...</code> se start hoti hai) aur niche paste karein.</li>
               </ol>
             </div>
 
@@ -236,7 +236,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                 {testingStatus === 'testing' ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>जाँच रहे हैं...</span>
+                    <span>Check ho raha hai...</span>
                   </>
                 ) : (
                   <>
@@ -250,7 +250,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                 type="button"
                 onClick={handleSave}
                 className="px-3.5 py-2 bg-white/10 hover:bg-white/15 text-white font-medium text-xs rounded-xl border border-white/10 transition-all"
-                title="बिना टेस्ट किए सीधे सेव करें"
+                title="Bina test kiye direct save karein"
               >
                 Direct Save
               </button>
@@ -314,7 +314,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-white">Google Search Grounding</div>
                     <div className="text-[11px] text-[#9aa0a6]">
-                      लाइव मार्केट भाव (सोना, चांदी, शेयर), मौसम और ताज़ा खबरें
+                      Live market rates (gold, silver, stocks), weather aur breaking news
                     </div>
                   </div>
                 </div>
@@ -342,7 +342,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-white">Imagen 3 Ultra Generator</div>
                     <div className="text-[11px] text-[#9aa0a6]">
-                      प्रॉम्प्ट से हाई-क्वालिटी AI फोटो और आर्टवर्क निर्माण
+                      Text prompt se ultra-HD AI photos aur artwork generation
                     </div>
                   </div>
                 </div>
@@ -370,7 +370,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-white">Neural Voice Engine</div>
                     <div className="text-[11px] text-[#9aa0a6]">
-                      हिंदी व अंग्रेज़ी में रीयल-टाइम आवाज़ आउटपुट और वॉइस प्लेबैक
+                      Hinglish aur English mein real-time voice output aur audio playback
                     </div>
                   </div>
                 </div>
@@ -398,7 +398,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-white">Turbo Neural Reasoning</div>
                     <div className="text-[11px] text-[#9aa0a6]">
-                      कठिन कोडिंग और गणितीय सवालों पर विस्तृत तर्क
+                      Complex coding, logic aur mathematical questions par detailed explanation
                     </div>
                   </div>
                 </div>

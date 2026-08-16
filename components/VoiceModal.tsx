@@ -21,7 +21,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Deep, authoritative & commanding (JARVIS / Iron Man style)',
     accentColor: '#ef4444',
     badge: 'Tactical',
-    samplePrompt: 'नमस्ते भाई, फेनरिर वॉइस इंजन एक्टिव है। बताइए आज आपकी क्या मदद करूँ?',
+    samplePrompt: 'Namaste Bhai! Fenrir voice engine active hai. Bataiye aaj aapki kya help karu?',
   },
   {
     id: 'Kore',
@@ -31,7 +31,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Calm, elegant, soft & graceful AI companion',
     accentColor: '#8ab4f8',
     badge: 'ZoZo Classic',
-    samplePrompt: 'हाँ भाई, ज़ोज़ो (ZoZo) आपकी सेवा में हाज़िर है। बताइए आज क्या काम करना है?',
+    samplePrompt: 'Haan Bhai! ZoZo aapki service mein hazir hai. Bataiye aaj kya dhamaka karna hai?',
   },
   {
     id: 'Zephyr',
@@ -41,7 +41,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Smooth, bright, lively & fast conversational tone',
     accentColor: '#38bdf8',
     badge: 'Fast & Crisp',
-    samplePrompt: 'नमस्ते भाई! ज़ेफिर वॉइस तैयार है। जो भी पूछना हो, बिल्कुल बेझिझक पूछिए!',
+    samplePrompt: 'Namaste Bhai! Zephyr voice ready hai. Jo bhi puchna ho, bina jhijhak puchiye!',
   },
   {
     id: 'Aoede',
@@ -51,7 +51,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Melodic, warm, empathetic & expressive cadence',
     accentColor: '#ec4899',
     badge: 'Expressive',
-    samplePrompt: 'जी भाई, आओएडे वॉइस कनेक्ट हो चुकी है। आपकी हर बात का साफ़ और सही जवाब मिलेगा।',
+    samplePrompt: 'Ji Bhai! Aoede voice connect ho chuki hai. Aapki har baat ka clear aur sahi answer milega.',
   },
   {
     id: 'Leda',
@@ -61,7 +61,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Polished, structured, clear & executive precision',
     accentColor: '#a855f7',
     badge: 'Executive',
-    samplePrompt: 'नमस्ते भाई, लेडा वॉइस एक्टिव है। मार्केट डेटा और जानकारी एकदम सटीक मिलेगी।',
+    samplePrompt: 'Namaste Bhai! Leda voice active hai. Real-time data aur insights ekdum accurate milenge.',
   },
   {
     id: 'Puck',
@@ -71,7 +71,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Playful, upbeat, witty & friendly companion',
     accentColor: '#10b981',
     badge: 'Energetic',
-    samplePrompt: 'अरे हाँ भाई! पक सिस्टम पूरी तरह तैयार है। आज क्या नया और मज़ेदार करना है?',
+    samplePrompt: 'Arre haan Bhai! Puck system ready hai boss. Aaj kya naya aur mazedaar karna hai?',
   },
   {
     id: 'Charon',
@@ -81,7 +81,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Deep, cinematic, resonant & mysterious presence',
     accentColor: '#f59e0b',
     badge: 'Cinematic',
-    samplePrompt: 'सिस्टम तैयार है भाई। शैरोन वॉइस कनेक्टेड है। हुक्म दीजिए।',
+    samplePrompt: 'System ready hai Bhai. Charon voice connected. Hukum kijiye Boss.',
   },
   {
     id: 'Orpheus',
@@ -91,7 +91,7 @@ export const VOICES: VoiceOption[] = [
     vibe: 'Charismatic, confident, articulate & bold delivery',
     accentColor: '#f97316',
     badge: 'Dynamic',
-    samplePrompt: 'नमस्ते भाई, ऑरफियस वॉइस एक्टिव है। बताइए आज आपकी क्या सेवा करूँ?',
+    samplePrompt: 'Namaste Bhai! Orpheus voice ready hai. Bataiye aaj kya command hai aapka?',
   },
 ];
 
