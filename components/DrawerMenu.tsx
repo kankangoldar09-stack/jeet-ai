@@ -16,6 +16,7 @@ import {
   Smile,
   Zap,
 } from "lucide-react";
+import { getDisplayVoiceName } from "./VoiceModal";
 
 interface DrawerMenuProps {
   isOpen: boolean;
@@ -155,23 +156,23 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
               onClose();
               onStartLiveCall();
             }}
-            className="w-full p-3 rounded-2xl flex items-center justify-between border border-[#2e6eff]/30 bg-gradient-to-r from-[#2e6eff]/20 via-[#7bddff]/10 to-transparent hover:from-[#2e6eff]/30 transition-all text-left group shadow-lg shadow-[#2e6eff]/10"
+            className="w-full p-3.5 rounded-2xl flex items-center justify-between border border-[#2e6eff]/40 bg-gradient-to-r from-[#2e6eff]/25 via-[#7bddff]/15 to-transparent hover:from-[#2e6eff]/35 transition-all text-left group shadow-lg shadow-[#2e6eff]/20"
           >
             <div className="flex items-center gap-3.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center text-white shadow-md shadow-[#2e6eff]/30">
-                <Phone className="w-4 h-4 fill-current" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center text-white shadow-md shadow-[#2e6eff]/30 shrink-0">
+                <Phone className="w-5 h-5 fill-current animate-pulse" />
               </div>
               <div>
-                <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>Speak-to-Speak Call</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-semibold uppercase">
-                    Live
+                <div className="text-xs font-black text-white flex items-center gap-2">
+                  <span>Live Voice Call</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-bold uppercase tracking-wider border border-emerald-500/30">
+                    Full Size
                   </span>
                 </div>
-                <div className="text-[11px] text-[#9aa0a6]">Real-time voice talking call</div>
+                <div className="text-[11px] text-[#7bddff]/90 mt-0.5">Direct 2-way AI Voice Talking</div>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-[#7bddff] group-hover:translate-x-0.5 transition-transform" />
+            <ChevronRight className="w-4 h-4 text-[#7bddff] group-hover:translate-x-1 transition-transform" />
           </button>
 
           {/* Gallery Studio */}
@@ -242,10 +243,10 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
                 <div className="text-xs font-bold text-white flex items-center gap-2">
                   <span>Neural Voice</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                    {selectedVoice}
+                    {getDisplayVoiceName(selectedVoice).split(' ')[0]}
                   </span>
                 </div>
-                <div className="text-[11px] text-[#9aa0a6]">8 ultra-realistic AI voices</div>
+                <div className="text-[11px] text-[#9aa0a6]">8 Desi Indian AI voices (Jeet, Aarav, etc.)</div>
               </div>
             </div>
             <ChevronRight className="w-4 h-4 text-[#9aa0a6] group-hover:translate-x-0.5 transition-transform" />

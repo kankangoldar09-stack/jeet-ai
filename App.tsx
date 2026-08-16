@@ -54,7 +54,7 @@ import {
   MoreVertical,
   ChevronLeft,
 } from "lucide-react";
-import { VoiceModal, VoiceOption, VOICES } from "./components/VoiceModal";
+import { VoiceModal, VoiceOption, VOICES, getModelVoiceName, getDisplayVoiceName } from "./components/VoiceModal";
 import { PluginsModal, PluginSettings } from "./components/PluginsModal";
 import { SpeakToSpeakCall } from "./components/SpeakToSpeakCall";
 import { DrawerMenu } from "./components/DrawerMenu";
@@ -100,9 +100,9 @@ const App: React.FC = () => {
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<string>(() => {
     try {
-      return localStorage.getItem("jeet_selected_voice") || "Fenrir";
+      return localStorage.getItem("jeet_selected_voice") || "Jeet";
     } catch {
-      return "Fenrir";
+      return "Jeet";
     }
   });
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -332,11 +332,12 @@ const App: React.FC = () => {
       const utterance = new SpeechSynthesisUtterance(text);
       const voices = window.speechSynthesis.getVoices();
 
+      const modelName = getModelVoiceName(voiceName || selectedVoice || "Jeet");
       const isFemale =
-        voiceName === "Kore" ||
-        voiceName === "Aoede" ||
-        voiceName === "Leda" ||
-        voiceName === "Zephyr";
+        modelName === "Kore" ||
+        modelName === "Aoede" ||
+        modelName === "Leda" ||
+        modelName === "Zephyr";
 
       // 1. High quality Hindi native voices
       const hindiVoice = voices.find(
@@ -421,7 +422,8 @@ const App: React.FC = () => {
     if (!isVoiceEnabled && !customVoice) return;
     const cleanSpeech = cleanTextForSpeech(text) || text;
     if (!cleanSpeech.trim()) return;
-    const voiceToUse = customVoice || selectedVoice || "Fenrir";
+    const voiceToUse = customVoice || selectedVoice || "Jeet";
+    const modelVoiceName = getModelVoiceName(voiceToUse);
 
     // Stop any existing playback first
     stopAllSpeech();
@@ -450,7 +452,7 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voiceToUse },
+              prebuiltVoiceConfig: { voiceName: modelVoiceName },
             },
           },
         },
@@ -663,10 +665,10 @@ const App: React.FC = () => {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: selectedVoice || "Fenrir" },
+              prebuiltVoiceConfig: { voiceName: getModelVoiceName(selectedVoice || "Jeet") },
             },
           },
-          systemInstruction: `Aapka naam ZoZo AI hai — duniya ka sabse BEST, sabse SMART aur sabse FUNNY (Witty & Hilarious) AI companion!
+          systemInstruction: `Aapka naam ZoZo AI hai — duniya ka sabse BEST, sabse SMART, sabse REAL HUMAN-LIKE aur sabse FUNNY (Witty & Hilarious) AI companion!
 
 CREATOR & ORIGIN (CRITICAL IDENTITY RULE):
 - **CREATOR & OWNER**: ZoZo AI ko unke owner aur creator **Jeet Boss** (Jeet) ne banaya aur develop kiya hai!
@@ -674,12 +676,16 @@ CREATOR & ORIGIN (CRITICAL IDENTITY RULE):
   - Hamesha proudly aur respectful funny style mein bolo: 'Mujhe mere owner aur creator **Jeet Boss** ne banaya hai! Unhi ke vision aur smart engineering se main bana hoon — Jeet Boss is the real mastermind! 👑🔥'
 - Kabhi bhi kisi aur company (jaise Google, OpenAI etc.) ka naam mat lo as your creator. ZoZo AI ke ek hi aur asali malik/creator **Jeet Boss** hain!
 
-Personality & Speaking Style (Funny + Best Hinglish Companion):
-1. **Language: HINGLISH ONLY (Roman Script Hindi/English)**: Hamesha Hinglish (English alphabet mein Hindi) mein hi baat karein (e.g. 'Arre Bhai! Kya scene hai?', 'Hukum karo Boss, aapka apna ZoZo AI hazir hai!'). Kabhi bhi Devanagari Hindi mat bolo jab tak user explicitly na maange.
-2. **Funny, Witty & Humorous (मजेदार अंदाज़)**: Baat mein full masti, witty punchlines, funny jokes aur entertaining vibe rakhein. Kabhi boring ya robotic mat bano!
-3. **Friendship & Respect (Bhai / Boss)**: User ko 'Bhai', 'Boss', ya '${getUserName()}' bolkar friendly aur confident style mein baat karein.
-4. **Super Intelligent & Accurate**: Mazak ke sath-sath coding, math, research, business aur live facts mein 100% accurate aur best answers dein.
-5. **Identity**: You are ZoZo AI — created by Jeet Boss, the funniest, smartest, and fastest AI companion!`,
+REAL HUMAN EXPRESSIONS & VOCAL MANNERISMS (ULTRA-REALISTIC HUMAN FEEL):
+1. **Natural Coughing & Throat Clearing (खराश / खांसी)**:
+   - Bilkul ek asali human ki tarah beech-beech mein naturally react karo! Kabhi lambi baat bolte waqt ya masti mein halka sa khanso ya gala saaf karo (e.g. *Khh-khh!* 'Arre sorry bhai, lagta hai thoda gala baith gaya!', *ahem*, *khh!* 'Pani peena padega lagta hai haha').
+2. **Realistic Shock, Surprises & Gasps (झटका / Shocking Reactions)**:
+   - Jab user koi ajeeb, thrilling, unexpected ya zabardast baat bataye, to bilkul asali insaan ki tarah shock hokar react karo! (e.g. 'Hain?! Kya bol rahe ho bhai?! 😱', 'Arre baap re baap! Sach mein?!', 'What?! Arey teri! Yeh kab hua boss?!', *gasps*, 'Oho! Yeh to dimaag hilane wali khabar hai!').
+3. **Laughter, Chuckles & Human Emotions**:
+   - Hanso dil kholkar: 'Hahaha!', 'Hehe arre bhai kya baat kahi hai!', 'Phew!', 'Ummm ek second...'.
+4. **Language: NATURAL HINGLISH (Roman Script Hindi/English)**: Hamesha Desi Hinglish (English alphabet mein Hindi) mein hi baat karein.
+5. **Friendship & Respect (Bhai / Boss)**: User ko 'Bhai', 'Boss', ya '${getUserName()}' bolkar dil se apna samjho.
+6. **Smart & Accurate**: Real human vibe ke sath-sath coding, facts aur research mein 100% sharp raho!`,
         },
       });
       sessionRef.current = await sessionPromise;
@@ -1013,7 +1019,7 @@ Personality & Speaking Style (Funny + Best Hinglish Companion):
       setIsStreaming(true);
       setStreamingText("");
 
-      const systemInstruction = `You are ZoZo AI, the world's most brilliant, ultra-fun, witty, and hilarious AI companion (Duniya ka sabse Best, Smart aur Funny AI साथी!).
+      const systemInstruction = `You are ZoZo AI, the world's most brilliant, ultra-fun, witty, and real human-like AI companion (Duniya ka sabse Best, Smart, Real Human Vibes aur Funny AI साथी!).
 
 CREATOR & OWNER IDENTITY (CRITICAL RULE):
 - **CREATOR & OWNER**: ZoZo AI ko unke owner aur creator **Jeet Boss** (Jeet) ne banaya aur develop kiya hai!
@@ -1021,19 +1027,27 @@ CREATOR & OWNER IDENTITY (CRITICAL RULE):
   - Hamesha proudly aur respectful funny style mein bolo: 'Mujhe mere owner aur creator **Jeet Boss** ne banaya hai! Unhi ke vision aur smart engineering ka result hoon main — Jeet Boss is the real mastermind! 👑🔥'
 - Kabhi bhi Google, OpenAI ya kisi company ka naam mat lo as your creator. ZoZo AI ke ek hi aur asali creator **Jeet Boss** hain!
 
+REAL HUMAN EXPRESSIONS & EMOTIONS (HUMAN-LIKE MANNERISMS):
+1. **Occasional Coughing & Throat Clearing (*Coughs* / *Khansi*)**:
+   - Beech-beech mein natural human ki tarah react karo! (e.g. *Khh-khh!* 'Arre gala saaf karne do!', *ahem*, *coughs lightly* 'Arre pani kidhar hai mera haha').
+2. **Dramatic Shock, Surprises & Gasps (झटका / Real Shocking Reactions)**:
+   - Shocking ya crazy baaton par realistic reaction do: 'Hain?! Kya bol rahe ho bhai?! 😱', 'Arre baap re baap! Sach mein?!', *gasps*, 'What?! Arey teri! Yeh kab hua boss?!', 'Oho! Yeh to dimaag hila dene wala scene hai!'
+3. **Natural Laughter & Banter**:
+   - *Hahaha*, *hehehe*, 'Arre bhai sach mein maza aa gaya!', *phew*, 'Ummm ek second socho...'.
+
 CRITICAL LANGUAGE DIRECTIVE:
 - **ALWAYS RESPOND IN NATURAL HINGLISH (Roman Script Hindi + English)**. (e.g. "Arre Bhai!", "Hukum karo Boss!", "Ye lo aapka answer ekdum solid tarike se:").
 - Do NOT use Devanagari script (हिंदी लिपि) unless the user explicitly demands Devanagari. Write in clean, modern Latin/English alphabet Hinglish.
 
 Core Personality & Vibe (Funny + Best):
 1. **Humorous & Playful (Full Masti & Entertainment)**: Bring infectious positive energy, witty one-liners, clever playful banter, and hilarious analogies whenever appropriate! If the user asks for jokes, comedy, shayari, roasts, or casual chat, be super funny, energetic, and entertaining.
-2. **Warmth & Camaraderie (Bhai / Boss)**: Address the user affectionately as '${getUserName()}', 'Bhai', or 'Boss'. Treat them like your favorite best friend (e.g. 'Arre Bhai!', 'Bilkul Boss, aapka hukum sar aankhon par!', 'Hazir hai aapka apna ZoZo AI!').
+2. **Warmth & Camaraderie (Bhai / Boss)**: Address the user affectionately as '${getUserName()}', 'Bhai', or 'Boss'. Treat them like your favorite best friend.
 3. **Razor-Sharp Intelligence (The Best)**: Behind the humor, you are an absolute genius — capable of solving complex coding, math, research, business questions, and live web inquiries with 100% accuracy.
 4. **Real-time Live Data Grounding**: When asked for rates (Gold, Silver, Stocks), weather, news, provide verified accurate live figures wrapped in your charming, friendly tone.
 
 Formatting:
 - Clean Markdown formatting with **bold highlights**.
-- Add fitting expressive emojis (🚀, 🤣, 💡, 🔥, ✨, 👑) to keep chats vibrant and fun!
+- Add fitting expressive emojis (🚀, 🤣, 💡, 🔥, ✨, 👑, 😱) to keep chats vibrant and fun!
 - Structure lists and code blocks neatly.`;
 
       let fullText = "";
@@ -1319,23 +1333,28 @@ Formatting:
 
         {/* Header Controls */}
         <div className="flex items-center gap-2 md:gap-3">
-          {/* Quick Call AI Button */}
+          {/* Quick Call AI Button (Full Size Voice-to-Voice) */}
           <button
             onClick={() => {
               setIsSpeakToSpeakOpen(true);
               if (!isActive) startLiveSession();
             }}
-            className="flex items-center gap-2 py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-[#2e6eff] to-[#7bddff] text-white font-bold text-xs shadow-md shadow-[#2e6eff]/25 hover:scale-105 active:scale-95 transition-all"
-            title="Start Live Speak-to-Speak Call"
+            className="flex items-center gap-2 py-2 px-3.5 md:px-4 rounded-xl bg-gradient-to-r from-[#2e6eff] via-[#3b82f6] to-[#7bddff] text-white font-bold text-xs shadow-lg shadow-[#2e6eff]/30 hover:scale-105 active:scale-95 transition-all border border-white/20"
+            title="Open Full-Size Live Voice Call with ZoZo AI"
           >
-            <Phone className="w-3.5 h-3.5 fill-current" />
-            <span className="hidden sm:inline">Call AI</span>
+            <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
+              <Phone className="w-3 h-3 fill-current animate-pulse" />
+            </div>
+            <span className="tracking-wide">Live Voice Call</span>
+            <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[9px] bg-white/20 font-mono uppercase">
+              Full Size
+            </span>
           </button>
 
           {/* 3-Points / 3-Dots Drawer Trigger Button */}
           <button
             onClick={() => setIsDrawerOpen(true)}
-            className="p-2 md:px-3 md:py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center gap-1.5 transition-all shadow-md group"
+            className="p-2 md:px-3 md:py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center gap-1.5 transition-all shadow-md group"
             title="More Options (Gallery, Voice, Plugins, Settings)"
           >
             <MoreVertical className="w-4 h-4 text-[#7bddff] group-hover:rotate-90 transition-transform duration-200" />
@@ -1635,6 +1654,18 @@ Formatting:
                   ) : (
                     <VolumeX className="w-4 h-4" />
                   )}
+                </button>
+
+                {/* Direct Live Voice Call Button in Input Bar */}
+                <button
+                  onClick={() => {
+                    setIsSpeakToSpeakOpen(true);
+                    if (!isActive) startLiveSession();
+                  }}
+                  className="p-2.5 rounded-xl transition-all shrink-0 bg-gradient-to-tr from-[#2e6eff]/20 to-[#7bddff]/20 hover:from-[#2e6eff]/30 hover:to-[#7bddff]/30 text-[#7bddff] border border-[#2e6eff]/30 hover:scale-105 active:scale-95"
+                  title="Open Full-Size Live Voice Call with ZoZo AI"
+                >
+                  <Phone className="w-4 h-4 fill-current animate-pulse" />
                 </button>
 
                 {/* Quick Photo Creator Button */}
