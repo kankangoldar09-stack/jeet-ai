@@ -1,6 +1,6 @@
 {
-  "name": "Jeet AI - Neural Interface",
-  "description": "Elite AI assistant Friday with real-time live voice, custom voice engine matrix, image generation, web grounding, and neural HUD.",
+  "name": "ZoZo AI - Neural Companion",
+  "description": "ZoZo AI (formerly Friday) with ultra-fast real-time speech, mobile-first interface, photo creation studio, and neural voice calling.",
   "requestFramePermissions": [
     "camera",
     "microphone",

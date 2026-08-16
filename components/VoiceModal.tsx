@@ -26,12 +26,12 @@ export const VOICES: VoiceOption[] = [
   {
     id: 'Kore',
     name: 'Kore',
-    title: 'Neural Friday',
+    title: 'Neural ZoZo',
     gender: 'Female',
     vibe: 'Calm, elegant, soft & graceful AI companion',
     accentColor: '#8ab4f8',
-    badge: 'Friday Classic',
-    samplePrompt: 'हाँ भाई, फ्राइडे आपकी सेवा में हाज़िर है। बताइए आज क्या काम करना है?',
+    badge: 'ZoZo Classic',
+    samplePrompt: 'हाँ भाई, ज़ोज़ो (ZoZo) आपकी सेवा में हाज़िर है। बताइए आज क्या काम करना है?',
   },
   {
     id: 'Zephyr',
