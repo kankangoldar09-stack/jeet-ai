@@ -55,8 +55,8 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
   if (!isOpen) return null;
 
   const handleTestKey = async () => {
-    const keyToTest = apiKeyInput.trim();
-    if (!keyToTest) {
+    const rawKey = apiKeyInput.trim().replace(/^["'`]|["'`]$/g, '').trim();
+    if (!rawKey) {
       setTestingStatus('error');
       setStatusMessage('कृपया वैध Google AI Studio API Key दर्ज करें।');
       return;
@@ -65,38 +65,65 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
     setTestingStatus('testing');
     setStatusMessage('Google AI Studio से कनेक्शन जाँचा जा रहा है...');
 
-    try {
-      const ai = new GoogleGenAI({ apiKey: keyToTest });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: [{ parts: [{ text: 'Respond with only "OK"' }] }],
-      });
+    let isValid = false;
+    let errorDetail = '';
 
-      if (response.text) {
-        setTestingStatus('success');
-        setStatusMessage('API Key सफलतापूर्वक सत्यापित हो गई! Quota सक्रिय है।');
-        onSaveApiKey(keyToTest);
+    // Step 1: Direct Google AI Studio REST validation
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${rawKey}&pageSize=1`);
+      if (res.ok) {
+        isValid = true;
       } else {
-        throw new Error('No response received');
+        const errJson = await res.json().catch(() => null);
+        errorDetail = errJson?.error?.message || `HTTP ${res.status}`;
       }
-    } catch (err: any) {
+    } catch (e: any) {
+      // If direct fetch is blocked by CORS/network, fallback to SDK
+      console.warn('REST verification skipped, testing with SDK:', e);
+    }
+
+    // Step 2: Test with @google/genai SDK if needed
+    if (!isValid) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: rawKey });
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: 'Say OK',
+        });
+        if (response && response.text) {
+          isValid = true;
+        }
+      } catch (sdkErr: any) {
+        if (!errorDetail) {
+          errorDetail = sdkErr?.message || 'अज्ञात त्रुटि';
+        }
+      }
+    }
+
+    if (isValid) {
+      setTestingStatus('success');
+      setStatusMessage('✓ असली Google AI Studio API Key सफलतापूर्वक कनेक्ट हो गई!');
+      onSaveApiKey(rawKey);
+    } else {
       setTestingStatus('error');
-      const errText = err?.message || '';
-      if (errText.includes('403') || errText.includes('API_KEY_INVALID')) {
-        setStatusMessage('गलत API Key! कृपया AI Studio से सही key कॉपी करें।');
-      } else if (errText.includes('429') || errText.includes('RESOURCE_EXHAUSTED')) {
-        setStatusMessage('इस API Key का कोटा समाप्त हो चुका है। नई key बनाएँ।');
+      if (errorDetail.includes('API_KEY_INVALID') || errorDetail.includes('400') || errorDetail.includes('403')) {
+        setStatusMessage('गलत API Key! यह Google AI Studio की मान्य key नहीं है। कृपया aistudio.google.com से AIzaSy... वाली key कॉपी करें।');
+      } else if (errorDetail.includes('429') || errorDetail.includes('RESOURCE_EXHAUSTED')) {
+        setStatusMessage('इस Key का कोटा पूरा हो चुका है, लेकिन Key सही है और सेव कर दी गई है।');
+        onSaveApiKey(rawKey);
+        setTestingStatus('success');
       } else {
-        setStatusMessage(`कनेक्शन त्रुटि: ${errText.slice(0, 100)}`);
+        // Allow saving anyway in case of network variance
+        setStatusMessage(`चेतावनी: ${errorDetail.slice(0, 90)}. अगर आपकी Key असली है तो "Direct Save" पर क्लिक करें।`);
       }
     }
   };
 
   const handleSave = () => {
-    const cleaned = apiKeyInput.trim();
+    const cleaned = apiKeyInput.trim().replace(/^["'`]|["'`]$/g, '').trim();
     onSaveApiKey(cleaned);
     setTestingStatus('success');
-    setStatusMessage(cleaned ? 'API Key सुरक्षित रूप से सेव हो गई!' : 'डिफ़ॉल्ट Key पर रीसेट किया गया।');
+    setStatusMessage(cleaned ? '✓ API Key तुरंत सेव कर दी गई है और सक्रिय है!' : 'डिफ़ॉल्ट Key पर रीसेट किया गया।');
   };
 
   const handleRemoveKey = () => {
@@ -119,18 +146,18 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/5 bg-[#171819]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8ab4f8]/20 to-[#c58af9]/20 border border-[#8ab4f8]/30 flex items-center justify-center">
-              <Puzzle className="w-5 h-5 text-[#8ab4f8]" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2e6eff]/20 to-[#7bddff]/20 border border-[#2e6eff]/30 flex items-center justify-center">
+              <Puzzle className="w-5 h-5 text-[#7bddff]" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                AI Studio Plugins & API Key
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#8ab4f8]/10 text-[#8ab4f8] border border-[#8ab4f8]/20">
-                  Jeet Neural
+                ZoZo AI - Plugins & API Key
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2e6eff]/10 text-[#7bddff] border border-[#2e6eff]/20">
+                  Settings
                 </span>
               </h2>
               <p className="text-xs text-[#9aa0a6]">
-                Google AI Studio API Key जोड़ें और उन्नत AI प्लगइन्स कस्टमाइज़ करें
+                Google AI Studio API Key जोड़ें और फीचर्स कस्टमाइज़ करें
               </p>
             </div>
           </div>
@@ -148,25 +175,33 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
           <div className="bg-[#131314] border border-white/10 rounded-xl p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-[#8ab4f8]" />
+                <KeyRound className="w-4 h-4 text-[#7bddff]" />
                 <label className="text-sm font-semibold text-white">
-                  Google AI Studio API Key
+                  Google AI Studio Gemini API Key
                 </label>
               </div>
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-[#8ab4f8] hover:underline flex items-center gap-1 font-medium"
+                className="text-xs text-[#7bddff] hover:underline flex items-center gap-1 font-medium bg-[#2e6eff]/10 px-2.5 py-1 rounded-lg border border-[#2e6eff]/20"
               >
-                <span>Free Key लें</span>
+                <span>मुफ़्त Key पाएँ</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
 
-            <p className="text-xs text-[#9aa0a6] leading-relaxed">
-              अपनी निजी Google AI Studio API Key डालने से आपको <b>Zero Rate-Limits</b> और तेज़ रिस्पॉन्स मिलता है।
-            </p>
+            {/* Quick 3-Step Guide */}
+            <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1.5 text-xs text-[#c4c7c5]">
+              <div className="font-semibold text-white text-[11px] uppercase tracking-wider text-[#7bddff]">
+                🔑 असली (Real) Gemini API Key कैसे लें:
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#9aa0a6]">
+                <li><b className="text-white">"मुफ़्त Key पाएँ"</b> बटन पर क्लिक करके AI Studio खोलें।</li>
+                <li><b className="text-white">"Create API key"</b> पर क्लिक करें और Project चुनें।</li>
+                <li>Key कॉपी करें (यह <code className="text-[#7bddff] bg-black/40 px-1 py-0.5 rounded">AIzaSy...</code> से शुरू होती है) और नीचे पेस्ट करें।</li>
+              </ol>
+            </div>
 
             <div className="relative">
               <input
@@ -178,7 +213,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                   setStatusMessage('');
                 }}
                 placeholder="AIzaSy..."
-                className="w-full bg-[#1e1f20] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#8ab4f8] pr-20 font-mono"
+                className="w-full bg-[#1e1f20] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#2e6eff] pr-20 font-mono"
               />
               <button
                 type="button"
@@ -196,7 +231,7 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
                 type="button"
                 onClick={handleTestKey}
                 disabled={testingStatus === 'testing' || !apiKeyInput.trim()}
-                className="px-4 py-2 bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#131314] font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="px-4 py-2 bg-[#2e6eff] hover:bg-[#255fd9] text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-md shadow-[#2e6eff]/20"
               >
                 {testingStatus === 'testing' ? (
                   <>
@@ -214,9 +249,10 @@ export const PluginsModal: React.FC<PluginsModalProps> = ({
               <button
                 type="button"
                 onClick={handleSave}
-                className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white font-medium text-xs rounded-xl border border-white/10 transition-all"
+                className="px-3.5 py-2 bg-white/10 hover:bg-white/15 text-white font-medium text-xs rounded-xl border border-white/10 transition-all"
+                title="बिना टेस्ट किए सीधे सेव करें"
               >
-                Save
+                Direct Save
               </button>
 
               {customApiKey && (
