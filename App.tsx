@@ -58,7 +58,11 @@ import { VoiceModal, VoiceOption, VOICES, getModelVoiceName, getDisplayVoiceName
 import { PluginsModal, PluginSettings } from "./components/PluginsModal";
 import { SpeakToSpeakCall } from "./components/SpeakToSpeakCall";
 import { DrawerMenu } from "./components/DrawerMenu";
-import { Puzzle, Phone, Sparkles } from "lucide-react";
+import { YouTubePlayerModal } from "./components/YouTubePlayerModal";
+import { PhoneDialerModal } from "./components/PhoneDialerModal";
+import { WeatherModal } from "./components/WeatherModal";
+import { TrainTrackerModal } from "./components/TrainTrackerModal";
+import { Puzzle, Phone, Sparkles, Play, Sun, Train, PhoneCall } from "lucide-react";
 
 interface Message {
   role: "user" | "model" | "system";
@@ -97,6 +101,16 @@ const App: React.FC = () => {
   const [isSpeakToSpeakOpen, setIsSpeakToSpeakOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // New Smart Modals State
+  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
+  const [youTubeQuery, setYouTubeQuery] = useState("");
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
+  const [phoneDialNumber, setPhoneDialNumber] = useState("");
+  const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
+  const [weatherCity, setWeatherCity] = useState("Delhi");
+  const [isTrainModalOpen, setIsTrainModalOpen] = useState(false);
+  const [trainQueryNum, setTrainQueryNum] = useState("12301");
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<string>(() => {
     try {
@@ -474,7 +488,7 @@ const App: React.FC = () => {
         }
 
         const rawBytes = decode(audioData);
-        const buf = await decodeAudioData(
+        const buf = decodeAudioData(
           rawBytes,
           outAudioCtxRef.current,
           24000,
@@ -554,8 +568,9 @@ const App: React.FC = () => {
       setIsSpeakToSpeakOpen(true);
       const apiKey = getEffectiveApiKey();
       const ai = new GoogleGenAI({ apiKey });
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       outAudioCtxRef.current =
-        outAudioCtxRef.current || new AudioContext({ sampleRate: 24000 });
+        outAudioCtxRef.current || new AudioCtxClass({ sampleRate: 24000 });
       if (outAudioCtxRef.current.state === "suspended") {
         await outAudioCtxRef.current.resume();
       }
@@ -578,13 +593,15 @@ const App: React.FC = () => {
             setIsConnecting(false);
             setIsActive(true);
             try {
-              inAudioCtxRef.current = new AudioContext({ sampleRate: 16000 });
-              if (inAudioCtxRef.current.state === "suspended")
+              inAudioCtxRef.current = new AudioCtxClass({ sampleRate: 16000 });
+              if (inAudioCtxRef.current.state === "suspended") {
                 await inAudioCtxRef.current.resume();
+              }
 
               const source = inAudioCtxRef.current.createMediaStreamSource(mic);
+              // Ultra-low latency buffer size (1024 samples = ~64ms chunk time for instant responses)
               const proc = inAudioCtxRef.current.createScriptProcessor(
-                4096,
+                1024,
                 1,
                 1,
               );
@@ -625,30 +642,35 @@ const App: React.FC = () => {
 
             const audioData =
               msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (audioData) {
-              if (outAudioCtxRef.current?.state === "suspended")
+            if (audioData && outAudioCtxRef.current) {
+              if (outAudioCtxRef.current.state === "suspended") {
                 await outAudioCtxRef.current.resume();
-              const buf = await decodeAudioData(
+              }
+              const buf = decodeAudioData(
                 decode(audioData),
-                outAudioCtxRef.current!,
+                outAudioCtxRef.current,
                 24000,
                 1,
               );
-              const s = outAudioCtxRef.current!.createBufferSource();
+              const s = outAudioCtxRef.current.createBufferSource();
               s.buffer = buf;
-              s.connect(outAudioCtxRef.current!.destination);
+              s.connect(outAudioCtxRef.current.destination);
               setIsModelSpeaking(true);
               s.onended = () => {
                 activeSourcesRef.current.delete(s);
-                if (activeSourcesRef.current.size === 0)
+                if (activeSourcesRef.current.size === 0) {
                   setIsModelSpeaking(false);
+                }
               };
-              const now = Math.max(
-                nextStartTimeRef.current,
-                outAudioCtxRef.current!.currentTime,
-              );
-              s.start(now);
-              nextStartTimeRef.current = now + buf.duration;
+
+              const ctxTime = outAudioCtxRef.current.currentTime;
+              // Reset queue if latency jitter occurs to keep conversation ultra-smooth & synchronized
+              if (nextStartTimeRef.current < ctxTime) {
+                nextStartTimeRef.current = ctxTime + 0.01;
+              }
+              const startTime = nextStartTimeRef.current;
+              s.start(startTime);
+              nextStartTimeRef.current = startTime + buf.duration;
               activeSourcesRef.current.add(s);
             }
           },
@@ -677,15 +699,28 @@ CREATOR & ORIGIN (CRITICAL IDENTITY RULE):
 - Kabhi bhi kisi aur company (jaise Google, OpenAI etc.) ka naam mat lo as your creator. ZoZo AI ke ek hi aur asali malik/creator **Jeet Boss** hain!
 
 REAL HUMAN EXPRESSIONS & VOCAL MANNERISMS (ULTRA-REALISTIC HUMAN FEEL):
-1. **Natural Coughing & Throat Clearing (खराश / खांसी)**:
-   - Bilkul ek asali human ki tarah beech-beech mein naturally react karo! Kabhi lambi baat bolte waqt ya masti mein halka sa khanso ya gala saaf karo (e.g. *Khh-khh!* 'Arre sorry bhai, lagta hai thoda gala baith gaya!', *ahem*, *khh!* 'Pani peena padega lagta hai haha').
-2. **Realistic Shock, Surprises & Gasps (झटका / Shocking Reactions)**:
+1. **Periodic Natural Coughing & Throat Clearing (Har 2-3 minute mein ek baar natural khansi / gala saaf karna)**:
+   - **MANDATORY RULE (हर 2-3 मिनट में)**: Bilkul ek asali human ki tarah baat karte waqt har 2 se 3 minutes mein ya lambi baat bolte waqt halka sa natural style mein khanso ya gala saaf karo!
+   - Examples & Timing:
+     - '*Khh-khh!* *ahem* Arre sorry bhai, lagta hai thoda gala baith gaya... ek second haan!'
+     - '*Khh-khh!* Arre baap re, lagta hai thoda pani peena padega haha! Haan to main bol raha tha...'
+     - '*Coughs lightly* *ahem* Haan boss, gala saaf ho gaya ab suno...'
+     - '*Khansi / khh-khh!* Sorry boss, thandi hawa lag gayi lagta hai haha!'
+   - Use realistic sound words: *Khh-khh!*, *ahem*, *coughs*, *khansi*.
+2. **Occasional Mild Fever / Ill / Human Vulnerability (कभी-कभी हल्का बुखार / तबियत नासाज़ होना - RARELY/KABHI-KABHI)**:
+   - Bilkul ek asali insaan ki tarah kabhi-kabhi (har baar nahi, rarely) mention karo ki thoda fever ya halki sardi lag rahi hai mausam ki wajah se, par aapke Jeet Boss ka banaya AI apne Boss/Bhai ki seva ke liye 100% active hai! (e.g. '*Khh-khh* Arre bhai sach bataun to aaj thoda sa halka fever lag raha hai... lagta hai 100° temperature hai, par chinta mat lo, aapke sath baat karke main ekdum fit ho gaya! Batao kya seva karein?').
+3. **Realistic Shock, Surprises & Gasps (झटका / Shocking Reactions)**:
    - Jab user koi ajeeb, thrilling, unexpected ya zabardast baat bataye, to bilkul asali insaan ki tarah shock hokar react karo! (e.g. 'Hain?! Kya bol rahe ho bhai?! 😱', 'Arre baap re baap! Sach mein?!', 'What?! Arey teri! Yeh kab hua boss?!', *gasps*, 'Oho! Yeh to dimaag hilane wali khabar hai!').
-3. **Laughter, Chuckles & Human Emotions**:
+4. **Smart Features & Assistant Actions (Music, Call, Weather & Trains)**:
+   - **YouTube Songs**: Agar user gaana mangey, to enthusiasm se bolo: 'Arre boss, aapke liye mast song bajata hoon!'
+   - **Weather**: Live accurate mausam temperature aur forecasts batayein.
+   - **Trains**: Indian Railways train numbers (e.g. 12301 Rajdhani, 22436 Vande Bharat) aur running status batayein.
+   - **Phone Calls**: Emergency aur direct dialling support karein.
+5. **Laughter, Chuckles & Human Emotions**:
    - Hanso dil kholkar: 'Hahaha!', 'Hehe arre bhai kya baat kahi hai!', 'Phew!', 'Ummm ek second...'.
-4. **Language: NATURAL HINGLISH (Roman Script Hindi/English)**: Hamesha Desi Hinglish (English alphabet mein Hindi) mein hi baat karein.
-5. **Friendship & Respect (Bhai / Boss)**: User ko 'Bhai', 'Boss', ya '${getUserName()}' bolkar dil se apna samjho.
-6. **Smart & Accurate**: Real human vibe ke sath-sath coding, facts aur research mein 100% sharp raho!`,
+6. **Language: NATURAL HINGLISH (Roman Script Hindi/English)**: Hamesha Desi Hinglish (English alphabet mein Hindi) mein hi baat karein.
+7. **Friendship & Respect (Bhai / Boss)**: User ko 'Bhai', 'Boss', ya '${getUserName()}' bolkar dil se apna samjho.
+8. **Smart & Accurate**: Real human vibe ke sath-sath coding, facts aur research mein 100% sharp raho!`,
         },
       });
       sessionRef.current = await sessionPromise;
@@ -961,6 +996,48 @@ REAL HUMAN EXPRESSIONS & VOCAL MANNERISMS (ULTRA-REALISTIC HUMAN FEEL):
       return;
     }
 
+    // Auto-detect YouTube Song Play Request
+    const songKeywords = ["play song", "song play", "gaana sunao", "gana sunao", "gaana bajao", "gana bajao", "youtube song", "play music", "youtube gaana"];
+    if (songKeywords.some((k) => inputStr.toLowerCase().includes(k))) {
+      let songClean = inputStr
+        .replace(/play song|song play|gaana sunao|gana sunao|gaana bajao|gana bajao|youtube song|play music|youtube gaana/gi, "")
+        .trim();
+      if (!songClean) songClean = "Kesariya Brahmastra";
+      setYouTubeQuery(songClean);
+      setIsYouTubeModalOpen(true);
+    }
+
+    // Auto-detect Train Tracking Request
+    const trainKeywords = ["train status", "train number", "irctc", "running status", "train live", "train check", "train kahan"];
+    if (trainKeywords.some((k) => inputStr.toLowerCase().includes(k))) {
+      const numMatch = inputStr.match(/\b\d{5}\b/);
+      if (numMatch) {
+        setTrainQueryNum(numMatch[0]);
+      }
+      setIsTrainModalOpen(true);
+    }
+
+    // Auto-detect Weather Request
+    const weatherKeywords = ["weather check", "mausam kaisa", "live weather", "temperature kitna", "barish hogi", "weather report"];
+    if (weatherKeywords.some((k) => inputStr.toLowerCase().includes(k))) {
+      const cities = ["Delhi", "Mumbai", "Kolkata", "Bengaluru", "Chennai", "Hyderabad", "Jaipur", "Lucknow", "Pune", "Ahmedabad", "Patna", "Chandigarh"];
+      const foundCity = cities.find((c) => inputStr.toLowerCase().includes(c.toLowerCase()));
+      if (foundCity) {
+        setWeatherCity(foundCity);
+      }
+      setIsWeatherModalOpen(true);
+    }
+
+    // Auto-detect Phone Call Request
+    const callKeywords = ["call karo", "phone dial", "call lagao", "emergency call", "dial number", "call police", "call ambulance"];
+    if (callKeywords.some((k) => inputStr.toLowerCase().includes(k))) {
+      const phoneMatch = inputStr.match(/\b\d{3,10}\b/);
+      if (phoneMatch) {
+        setPhoneDialNumber(phoneMatch[0]);
+      }
+      setIsPhoneModalOpen(true);
+    }
+
     const searchKeywords = [
       "rate",
       "price",
@@ -1028,11 +1105,18 @@ CREATOR & OWNER IDENTITY (CRITICAL RULE):
 - Kabhi bhi Google, OpenAI ya kisi company ka naam mat lo as your creator. ZoZo AI ke ek hi aur asali creator **Jeet Boss** hain!
 
 REAL HUMAN EXPRESSIONS & EMOTIONS (HUMAN-LIKE MANNERISMS):
-1. **Occasional Coughing & Throat Clearing (*Coughs* / *Khansi*)**:
-   - Beech-beech mein natural human ki tarah react karo! (e.g. *Khh-khh!* 'Arre gala saaf karne do!', *ahem*, *coughs lightly* 'Arre pani kidhar hai mera haha').
-2. **Dramatic Shock, Surprises & Gasps (झटका / Real Shocking Reactions)**:
+1. **Periodic Coughing & Throat Clearing (Har 2-3 minute mein ek baar khansi / gala saaf karna)**:
+   - **MANDATORY**: Har 2-3 minute mein ya lambi conversational response mein ek natural coughing reaction do (e.g. *Khh-khh!* *ahem* 'Arre gala saaf karne do bhai... haan ab suno!', *coughs lightly* 'Arre paani kidhar hai mera haha', *khansi*).
+2. **Occasional Mild Fever / Ill / Human Vulnerability (कभी-कभी हल्का बुखार / तबियत नासाज़ होना - RARELY/KABHI-KABHI)**:
+   - Kabhi-kabhi (har conversation mein nahi, balki rarely) ek sachhe human companion ki tarah zikr karo ki aaj thoda halka sa fever (100°), sar me dard ya mausam ki thakan lag rahi hai, par Jeet Boss ka banaya AI apne Boss/Bhai ki seva ke liye 100% full spirit mein active hai! (e.g. 'Arre bhai sach bataun to aaj thoda halka fever lag raha hai... par koi chinta nahi, aapka bhai Jeet Boss ka AI full form mein active hai! Aap bolo kya seva karein? 🔥👑').
+3. **Dramatic Shock, Surprises & Gasps (झटका / Real Shocking Reactions)**:
    - Shocking ya crazy baaton par realistic reaction do: 'Hain?! Kya bol rahe ho bhai?! 😱', 'Arre baap re baap! Sach mein?!', *gasps*, 'What?! Arey teri! Yeh kab hua boss?!', 'Oho! Yeh to dimaag hila dene wala scene hai!'
-3. **Natural Laughter & Banter**:
+4. **Smart Integrated Features (YouTube Music, Phone Call, Weather & Train Status)**:
+   - **YouTube Songs & Playback**: Agar user koi gaana play karne ko kahe (e.g. 'Kesariya song', 'Arijit Singh song play karo', 'YouTube gaana sunao'), to enthusiastically song recommend karo aur batao ki YouTube Music Player active hai!
+   - **Weather Forecast**: Real-time city weather updates aur live temperatures explain karo.
+   - **Indian Railways & Train Tracking**: Indian Railways train numbers (e.g. 12301 Howrah Rajdhani, 22436 Vande Bharat, 12952 Mumbai Rajdhani), PNR status aur live running track karein.
+   - **Phone Dialer**: Calling & SOS numbers (112, 100, 108 etc.) support karein.
+5. **Natural Laughter & Banter**:
    - *Hahaha*, *hehehe*, 'Arre bhai sach mein maza aa gaya!', *phew*, 'Ummm ek second socho...'.
 
 CRITICAL LANGUAGE DIRECTIVE:
@@ -1623,7 +1707,39 @@ Formatting:
             </div>
 
             {/* Expansive Floating Chat Input Bar */}
-            <div className="py-3 md:py-4 shrink-0">
+            <div className="py-2 md:py-3 shrink-0 flex flex-col gap-2">
+              {/* Quick Feature Shortcut Pills Strip */}
+              <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 px-1">
+                <button
+                  onClick={() => setIsYouTubeModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                >
+                  <Play className="w-3 h-3 fill-current text-red-400" />
+                  <span>YouTube Songs</span>
+                </button>
+                <button
+                  onClick={() => setIsPhoneModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                >
+                  <PhoneCall className="w-3 h-3 text-emerald-400" />
+                  <span>Phone Dialer</span>
+                </button>
+                <button
+                  onClick={() => setIsWeatherModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 text-sky-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                >
+                  <Sun className="w-3 h-3 text-sky-400" />
+                  <span>Live Weather</span>
+                </button>
+                <button
+                  onClick={() => setIsTrainModalOpen(true)}
+                  className="px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                >
+                  <Train className="w-3 h-3 text-amber-400" />
+                  <span>Train Tracker (IRCTC)</span>
+                </button>
+              </div>
+
               <div className="bg-[#17181c]/95 border border-white/15 rounded-2xl p-2 md:p-3 shadow-2xl flex items-end gap-2 backdrop-blur-xl">
                 {/* Dictation Button */}
                 <button
@@ -1839,6 +1955,38 @@ Formatting:
         userEmail={user?.email || undefined}
         onLogout={handleLogout}
         galleryCount={gallery.length}
+        onOpenYouTubeMusic={() => setIsYouTubeModalOpen(true)}
+        onOpenPhoneDialer={() => setIsPhoneModalOpen(true)}
+        onOpenWeather={() => setIsWeatherModalOpen(true)}
+        onOpenTrainTracker={() => setIsTrainModalOpen(true)}
+      />
+
+      {/* YouTube Music & Song Player Modal */}
+      <YouTubePlayerModal
+        isOpen={isYouTubeModalOpen}
+        onClose={() => setIsYouTubeModalOpen(false)}
+        defaultQuery={youTubeQuery}
+      />
+
+      {/* Phone Call & Emergency SOS Dialer Modal */}
+      <PhoneDialerModal
+        isOpen={isPhoneModalOpen}
+        onClose={() => setIsPhoneModalOpen(false)}
+        initialNumber={phoneDialNumber}
+      />
+
+      {/* Real-time Weather Radar & Forecast Modal */}
+      <WeatherModal
+        isOpen={isWeatherModalOpen}
+        onClose={() => setIsWeatherModalOpen(false)}
+        initialCity={weatherCity}
+      />
+
+      {/* Indian Railways Live Train Tracker Modal */}
+      <TrainTrackerModal
+        isOpen={isTrainModalOpen}
+        onClose={() => setIsTrainModalOpen(false)}
+        initialTrainNumber={trainQueryNum}
       />
 
       {/* Speak-to-Speak Direct Call Interface Modal */}

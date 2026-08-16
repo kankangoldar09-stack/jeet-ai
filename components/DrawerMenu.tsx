@@ -15,6 +15,10 @@ import {
   Shield,
   Smile,
   Zap,
+  Play,
+  Sun,
+  Train,
+  PhoneCall,
 } from "lucide-react";
 import { getDisplayVoiceName } from "./VoiceModal";
 
@@ -35,6 +39,10 @@ interface DrawerMenuProps {
   userEmail?: string;
   onLogout: () => void;
   galleryCount: number;
+  onOpenYouTubeMusic?: () => void;
+  onOpenPhoneDialer?: () => void;
+  onOpenWeather?: () => void;
+  onOpenTrainTracker?: () => void;
 }
 
 export const DrawerMenu: React.FC<DrawerMenuProps> = ({
@@ -54,6 +62,10 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
   userEmail,
   onLogout,
   galleryCount,
+  onOpenYouTubeMusic,
+  onOpenPhoneDialer,
+  onOpenWeather,
+  onOpenTrainTracker,
 }) => {
   if (!isOpen) return null;
 
@@ -226,6 +238,114 @@ export const DrawerMenu: React.FC<DrawerMenuProps> = ({
             </div>
             <ChevronRight className="w-4 h-4 text-[#c58af9] group-hover:translate-x-0.5 transition-transform" />
           </button>
+
+          {/* YouTube Music Player */}
+          {onOpenYouTubeMusic && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenYouTubeMusic();
+              }}
+              className="w-full p-3 rounded-2xl flex items-center justify-between border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-white transition-all text-left group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-red-600/30 flex items-center justify-center text-red-400">
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>YouTube Music</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">
+                      Song Play
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#9aa0a6]">Play songs & trending playlists</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-red-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
+
+          {/* Smart Phone Dialer */}
+          {onOpenPhoneDialer && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenPhoneDialer();
+              }}
+              className="w-full p-3 rounded-2xl flex items-center justify-between border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/20 text-white transition-all text-left group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <PhoneCall className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Phone Call & SOS</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold uppercase">
+                      Dialer
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#9aa0a6]">Direct number dial & emergency</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
+
+          {/* Real-time Weather */}
+          {onOpenWeather && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenWeather();
+              }}
+              className="w-full p-3 rounded-2xl flex items-center justify-between border border-sky-500/20 bg-sky-500/10 hover:bg-sky-500/20 text-white transition-all text-left group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-500/30 flex items-center justify-center text-sky-400">
+                  <Sun className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Live Weather</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold uppercase">
+                      Live
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#9aa0a6]">Real-time temp & 5-day forecast</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-sky-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
+
+          {/* Live Train Tracker */}
+          {onOpenTrainTracker && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenTrainTracker();
+              }}
+              className="w-full p-3 rounded-2xl flex items-center justify-between border border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/20 text-white transition-all text-left group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Train className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Train Tracker (IRCTC)</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold uppercase">
+                      Status
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#9aa0a6]">Train number & running status</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
 
           {/* Voice Selector */}
           <button

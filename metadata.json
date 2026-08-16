@@ -1,6 +1,6 @@
 {
   "name": "ZoZo AI - Neural Companion",
-  "description": "ZoZo AI (formerly Friday) with ultra-fast real-time speech, mobile-first interface, photo creation studio, and neural voice calling.",
+  "description": "ZoZo AI by Jeet Boss: Real-human AI companion with periodic coughing and natural expressions, YouTube music playback, phone dialer, live weather, and Indian Railways train tracker.",
   "requestFramePermissions": [
     "camera",
     "microphone",

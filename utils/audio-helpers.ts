@@ -2,8 +2,10 @@
 export function encode(bytes: Uint8Array): string {
   let binary = '';
   const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK_SIZE = 0x8000; // 32KB chunks to prevent call stack overflow
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
+    binary += String.fromCharCode.apply(null, slice as unknown as number[]);
   }
   return btoa(binary);
 }
@@ -18,14 +20,19 @@ export function decode(base64: string): Uint8Array {
   return bytes;
 }
 
-export async function decodeAudioData(
+export function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
+  sampleRate: number = 24000,
+  numChannels: number = 1,
+): AudioBuffer {
+  // Ensure correct byte offset and length
+  const dataInt16 = new Int16Array(
+    data.buffer,
+    data.byteOffset,
+    Math.floor(data.byteLength / 2)
+  );
+  const frameCount = Math.floor(dataInt16.length / numChannels);
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
 
   for (let channel = 0; channel < numChannels; channel++) {
@@ -41,10 +48,11 @@ export function createBlob(data: Float32Array): { data: string; mimeType: string
   const l = data.length;
   const int16 = new Int16Array(l);
   for (let i = 0; i < l; i++) {
-    int16[i] = data[i] * 32768;
+    const s = Math.max(-1, Math.min(1, data[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
   return {
-    data: encode(new Uint8Array(int16.buffer)),
+    data: encode(new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength)),
     mimeType: 'audio/pcm;rate=16000',
   };
 }

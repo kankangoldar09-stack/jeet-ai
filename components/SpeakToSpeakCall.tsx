@@ -151,6 +151,9 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const timerRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const discRef = useRef<HTMLDivElement | null>(null);
+  const atmosphereRef = useRef<HTMLDivElement | null>(null);
+  const lastStateUpdateRef = useRef<number>(0);
 
   const currentTheme = COLOR_THEMES.find((t) => t.id === selectedThemeId) || COLOR_THEMES[0];
   const displayVoiceName = getDisplayVoiceName(selectedVoice);
@@ -171,7 +174,7 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
     };
   }, [isActive]);
 
-  // Audio stream analyzer & animated rotation matching user provided code + bottom sound effects
+  // Audio stream analyzer & animated rotation with optimized zero-lag 60fps rendering
   useEffect(() => {
     if (!isActive || !micStream) {
       setScale(1);
@@ -204,35 +207,48 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
 
-      const animate = () => {
+      const animate = (timestamp: number) => {
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < bufferLength; i++) {
           sum += dataArray[i];
         }
         const volume = sum / bufferLength;
-        setAudioLevel(volume);
 
-        // Extract 32 frequency buckets for the bottom equalizer
-        const buckets: number[] = [];
-        const step = Math.max(1, Math.floor(bufferLength / 32));
-        for (let i = 0; i < 32; i++) {
-          const rawVal = dataArray[i * step] || 0;
-          const boost = isModelSpeaking ? Math.sin(Date.now() / 120 + i) * 35 + 45 : 0;
-          const finalVal = Math.max(6, Math.min(100, (rawVal / 255) * 85 + boost));
-          buckets.push(finalVal);
-        }
-        setFrequencyData(buckets);
+        // Smooth rotation calculation
+        const deg = (timestamp / 30) % 360;
 
         // Scale formula: 1 + (volume / 400) + boost if model speaking
         const boost = isModelSpeaking ? 45 : 0;
         const totalVol = volume + boost;
         const targetScale = 1 + totalVol / 380;
-        setScale(targetScale);
 
-        // Smooth rotation
-        const deg = (Date.now() / 30) % 360;
-        setRotationDeg(deg);
+        // Direct high-performance DOM transform updates to prevent React re-render lag
+        if (discRef.current) {
+          discRef.current.style.transform = `scale(${targetScale}) rotate(${deg}deg)`;
+        }
+        if (atmosphereRef.current) {
+          atmosphereRef.current.style.transform = `scale(${targetScale * 1.25})`;
+        }
+
+        // Throttle React state updates to ~25fps (every 40ms) for equalizer to keep CPU cool and audio silky smooth
+        if (timestamp - lastStateUpdateRef.current > 40) {
+          lastStateUpdateRef.current = timestamp;
+          setAudioLevel(volume);
+          setScale(targetScale);
+          setRotationDeg(deg);
+
+          // Extract 32 frequency buckets for the bottom equalizer
+          const buckets: number[] = [];
+          const step = Math.max(1, Math.floor(bufferLength / 32));
+          for (let i = 0; i < 32; i++) {
+            const rawVal = dataArray[i * step] || 0;
+            const b = isModelSpeaking ? Math.sin(timestamp / 120 + i) * 35 + 45 : 0;
+            const finalVal = Math.max(6, Math.min(100, (rawVal / 255) * 85 + b));
+            buckets.push(finalVal);
+          }
+          setFrequencyData(buckets);
+        }
 
         // Render Canvas Live Oscilloscope Waveform at the bottom
         if (canvasRef.current) {
@@ -246,14 +262,12 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
 
             // Draw glowing sonic wave
             ctx2d.beginPath();
-            ctx2d.lineWidth = 3;
+            ctx2d.lineWidth = 2.5;
             const grad = ctx2d.createLinearGradient(0, 0, width, 0);
             grad.addColorStop(0, currentTheme.eqGradient[0]);
             grad.addColorStop(0.5, currentTheme.eqGradient[1]);
             grad.addColorStop(1, currentTheme.eqGradient[2]);
             ctx2d.strokeStyle = grad;
-            ctx2d.shadowBlur = 12;
-            ctx2d.shadowColor = currentTheme.badge;
 
             const sliceWidth = width / bufferLength;
             let x = 0;
@@ -261,7 +275,7 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
             for (let i = 0; i < bufferLength; i++) {
               const v = dataArray[i] / 128.0;
               const y = isModelSpeaking
-                ? centerY + Math.sin((i + Date.now() / 60) * 0.4) * (height * 0.38)
+                ? centerY + Math.sin((i + timestamp / 60) * 0.4) * (height * 0.38)
                 : (v * height) / 2;
 
               if (i === 0) {
@@ -279,7 +293,7 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
         animationFrameRef.current = requestAnimationFrame(animate);
       };
 
-      animate();
+      animationFrameRef.current = requestAnimationFrame(animate);
     } catch (err) {
       console.warn('Live Audio analyzer error', err);
     }
@@ -470,7 +484,8 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
         <main className="relative flex-1 flex flex-col items-center justify-center p-4 md:p-6 my-auto z-20 overflow-hidden">
           {/* Outer Ambient Atmosphere Glow */}
           <div
-            className="absolute rounded-full transition-all duration-700 pointer-events-none"
+            ref={atmosphereRef}
+            className="absolute rounded-full transition-transform duration-75 pointer-events-none"
             style={{
               width: '420px',
               height: '420px',
@@ -517,7 +532,8 @@ export const SpeakToSpeakCall: React.FC<SpeakToSpeakCallProps> = ({
 
             {/* The Main Dynamic Voice Disc */}
             <div
-              className={`relative rounded-full overflow-hidden shadow-2xl transition-transform duration-75 ease-out flex items-center justify-center border-4 border-white/20`}
+              ref={discRef}
+              className={`relative rounded-full overflow-hidden shadow-2xl transition-transform duration-75 ease-out flex items-center justify-center border-4 border-white/20 will-change-transform`}
               style={{
                 width: '74vw',
                 height: '74vw',
