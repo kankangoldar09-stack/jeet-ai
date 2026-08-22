@@ -3,103 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ZoZo AI - Neural Companion</title>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700&family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <title>Gemini Ultra AI - ZoZo</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <script>
         window.process = window.process || { env: { API_KEY: "" } };
     </script>
     <style>
         :root { 
-            --accent: #8ab4f8; 
-            --bg-dark: #131314;
-            --bg-sidebar: #1e1f20;
-            --bg-input: #282a2d;
-            --text-primary: #e3e3e3;
-            --text-secondary: #c4c7c5;
+            --bg-main: #07080b;
+            --bg-surface: #0f1117;
+            --bg-surface-elevated: #161922;
+            --gemini-gradient: linear-gradient(135deg, #4285f4 0%, #9b72cb 40%, #d96570 70%, #d946ef 100%);
+            --gemini-glow: rgba(155, 114, 203, 0.35);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-bright: rgba(255, 255, 255, 0.15);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-tertiary: #64748b;
         }
         body {
-            background: var(--bg-dark);
+            background: #000000;
             color: var(--text-primary);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             margin: 0;
             padding: 0;
             overflow: hidden;
             height: 100dvh;
             width: 100vw;
-            position: fixed;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             -webkit-font-smoothing: antialiased;
         }
-        #root { height: 100%; width: 100%; }
+        #root { 
+            height: 100%; 
+            width: 100%; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
         
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 10px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        .glass {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .sidebar-btn {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            width: 100%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: all 0.2s ease;
-            color: var(--text-secondary);
-            text-align: left;
-        }
-        .sidebar-btn:hover {
-            background: rgba(255, 255, 255, 0.05);
-            color: white;
-        }
-        .sidebar-btn.active {
-            background: rgba(138, 180, 248, 0.1);
-            color: var(--accent);
-        }
-        
-        .chat-input-container {
-            background: var(--bg-input);
-            border-radius: 28px;
-            padding: 4px 8px;
-            transition: box-shadow 0.2s ease;
-        }
-        .chat-input-container:focus-within {
-            box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.2);
-        }
-        
-        .user-msg {
-            background: #2b2c2f;
-            border-radius: 18px;
-            padding: 12px 16px;
-            max-width: 85%;
-            align-self: flex-end;
-        }
-        .model-msg {
-            max-width: 90%;
-            align-self: flex-start;
-            line-height: 1.6;
-        }
-        
-        .tech-title {
-            font-family: 'Space Grotesk', sans-serif;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease forwards;
-        }
     </style>
     <script type="importmap">
 {
@@ -117,7 +67,6 @@
 </head>
 <body>
     <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
-<script type="module" src="/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

@@ -53,6 +53,17 @@ import {
   Flame,
   MoreVertical,
   ChevronLeft,
+  SquarePen,
+  ArrowUp,
+  Code2,
+  Feather,
+  Gamepad2,
+  Check,
+  ChevronDown,
+  Share2,
+  ThumbsUp,
+  RotateCw,
+  Copy,
 } from "lucide-react";
 import { VoiceModal, VoiceOption, VOICES, getModelVoiceName, getDisplayVoiceName } from "./components/VoiceModal";
 import { PluginsModal, PluginSettings } from "./components/PluginsModal";
@@ -101,6 +112,8 @@ const App: React.FC = () => {
   const [isSpeakToSpeakOpen, setIsSpeakToSpeakOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [selectedModelName, setSelectedModelName] = useState("Gemini 2.0 Flash");
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   // New Smart Modals State
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
@@ -1388,64 +1401,67 @@ Formatting:
   }
 
   return (
-    <div className="h-full w-full bg-[#0a0b0e] flex flex-col text-[#e3e3e3] overflow-hidden select-none relative">
-      {/* Dynamic Ambient Background Glow */}
-      <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-[#2e6eff]/10 blur-[150px] rounded-full pointer-events-none"></div>
-      <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-[#7bddff]/10 blur-[150px] rounded-full pointer-events-none"></div>
+    <div id="app-container" className="w-full h-[100dvh] max-w-[500px] md:h-[94dvh] md:rounded-[36px] md:border md:border-white/10 bg-[#07080b] shadow-2xl relative overflow-hidden flex flex-col mx-auto text-[#f8fafc]">
+      {/* Top Ambient Glow */}
+      <div
+        className="ambient-glow absolute top-[-90px] left-1/2 -translate-x-1/2 w-[340px] h-[220px] rounded-full pointer-events-none z-0"
+        style={{
+          background: "radial-gradient(ellipse, rgba(155, 114, 203, 0.35) 0%, rgba(0,0,0,0) 70%)",
+          filter: "blur(50px)",
+        }}
+      />
 
-      {/* Top Navigation Bar (Full Width) */}
-      <header className="h-15 flex items-center justify-between px-4 md:px-8 border-b border-white/10 bg-[#131418]/90 backdrop-blur-md shrink-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-lg shadow-[#2e6eff]/30">
-            <Zap className="w-5 h-5 text-white" fill="currentColor" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-black tech-title tracking-tight text-white">
-                ZoZo AI
-              </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#2e6eff]/20 text-[#7bddff] border border-[#2e6eff]/30 font-medium">
-                <Smile className="w-3 h-3 text-[#7bddff]" />
-                <span>Funny & Best AI</span>
-              </span>
-            </div>
-            <p className="text-[10px] text-[#9aa0a6] hidden md:block">
-              Super-intelligent • Witty Humor • Voice Call • Imagen 3
-            </p>
-          </div>
+      {/* Top App Header */}
+      <header className="relative z-20 px-4 py-3 flex items-center justify-between bg-[#0f1117]/80 backdrop-blur-xl border-b border-white/[0.08] shrink-0">
+        <button
+          onClick={() => setIsDrawerOpen(true)}
+          className="w-10 h-10 rounded-2xl flex items-center justify-center text-[#94a3b8] hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+          aria-label="Menu"
+          title="Open Menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        {/* Gemini Model Selector Pill */}
+        <div
+          onClick={() => {
+            const models = ["Gemini 2.0 Flash", "Gemini 1.5 Pro", "Gemini Ultra 1.0"];
+            const nextIdx = (models.indexOf(selectedModelName) + 1) % models.length;
+            setSelectedModelName(models[nextIdx]);
+          }}
+          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.06] border border-white/10 hover:bg-white/[0.1] active:scale-95 transition-all cursor-pointer shadow-sm"
+          title="Click to switch AI Model"
+        >
+          <div className="gemini-sparkle-icon shrink-0"></div>
+          <span className="text-[13px] font-bold text-white tracking-tight">
+            {selectedModelName}
+          </span>
+          <ChevronDown className="w-3.5 h-3.5 text-[#94a3b8]" />
         </div>
 
-        {/* Header Controls */}
-        <div className="flex items-center gap-2 md:gap-3">
-          {/* Quick Call AI Button (Full Size Voice-to-Voice) */}
+        <div className="flex items-center gap-1.5">
+          {/* Quick Voice Call Button */}
           <button
             onClick={() => {
               setIsSpeakToSpeakOpen(true);
               if (!isActive) startLiveSession();
             }}
-            className="flex items-center gap-2 py-2 px-3.5 md:px-4 rounded-xl bg-gradient-to-r from-[#2e6eff] via-[#3b82f6] to-[#7bddff] text-white font-bold text-xs shadow-lg shadow-[#2e6eff]/30 hover:scale-105 active:scale-95 transition-all border border-white/20"
-            title="Open Full-Size Live Voice Call with ZoZo AI"
+            className="w-10 h-10 rounded-2xl flex items-center justify-center text-[#9b72cb] hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+            title="Live Voice Call"
           >
-            <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
-              <Phone className="w-3 h-3 fill-current animate-pulse" />
-            </div>
-            <span className="tracking-wide">Live Voice Call</span>
-            <span className="hidden md:inline-block px-1.5 py-0.2 rounded text-[9px] bg-white/20 font-mono uppercase">
-              Full Size
-            </span>
+            <Phone className="w-4 h-4 fill-current animate-pulse text-[#d946ef]" />
           </button>
 
-          {/* 3-Points / 3-Dots Drawer Trigger Button */}
+          {/* New Conversation Button */}
           <button
-            onClick={() => setIsDrawerOpen(true)}
-            className="p-2 md:px-3 md:py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center gap-1.5 transition-all shadow-md group"
-            title="More Options (Gallery, Voice, Plugins, Settings)"
+            onClick={() => {
+              setMessages([]);
+              setViewMode("chat");
+            }}
+            className="w-10 h-10 rounded-2xl flex items-center justify-center text-[#94a3b8] hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+            title="New Chat"
           >
-            <MoreVertical className="w-4 h-4 text-[#7bddff] group-hover:rotate-90 transition-transform duration-200" />
-            <span className="hidden sm:inline text-xs font-semibold text-[#e3e3e3]">Options</span>
-            {gallery.length > 0 && (
-              <span className="w-2 h-2 rounded-full bg-[#7bddff] animate-pulse"></span>
-            )}
+            <SquarePen className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -1453,98 +1469,86 @@ Formatting:
       {/* Main Content Area (Full Screen Responsive) */}
       <div className="flex-1 overflow-hidden flex flex-col relative z-10">
         {viewMode === "chat" ? (
-          <div className="flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full px-3 md:px-6">
-            {/* Message Feed */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar py-4 md:py-6">
-              <div className="flex flex-col gap-5">
+          <div className="flex-1 flex flex-col overflow-hidden w-full px-3 md:px-4">
+            {/* Message Feed Viewport */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar py-3 md:py-4">
+              <div className="flex flex-col gap-4">
                 {messages.length === 0 && !isSearching && !isGeneratingImage && (
-                  <div className="min-h-[55vh] flex flex-col items-center justify-center text-center gap-6 p-4 animate-fade-in">
-                    <div className="w-18 h-18 rounded-3xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shadow-2xl shadow-[#2e6eff]/30 border border-white/20">
-                      <Sparkles className="w-9 h-9 text-white animate-pulse" />
-                    </div>
-                    <div className="flex flex-col gap-2 max-w-lg">
-                      <h2 className="text-2xl font-black text-white tracking-tight flex items-center justify-center gap-2">
-                        <span>Namaste {getUserName()}!</span>
-                        <span className="inline-block animate-bounce">😄</span>
-                      </h2>
-                      <p className="text-sm text-[#9aa0a6] leading-relaxed">
-                        Main hoon <b>ZoZo AI</b> — duniya ka sabse <b>BEST, SMART aur FUNNY</b> AI companion! Bolo Boss, aaj kya scene hai?
-                      </p>
-                    </div>
+                  <div className="my-auto pb-4 pt-6 flex flex-col items-start px-2 animate-fade-in">
+                    <div className="gemini-big-star mb-4"></div>
+                    <h1 className="text-3xl font-extrabold tracking-tight gemini-gradient-text mb-2">
+                      Hello, {getUserName()}
+                    </h1>
+                    <p className="text-[14px] text-[#94a3b8] leading-relaxed mb-6">
+                      How can I assist you with your projects, code, or ideas today?
+                    </p>
 
-                    {/* Quick Funny & Smart Prompt Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl mt-2">
+                    {/* 2x2 Gemini Prompt Grid Cards */}
+                    <div className="grid grid-cols-2 gap-2.5 w-full">
                       {[
                         {
-                          text: "Ek mast funny joke sunao bhai 🤣",
-                          icon: <Laugh className="w-4 h-4 text-amber-400" />,
-                          desc: "Full comedy & laughs guaranteed",
+                          title: "Code a responsive navigation bar",
+                          prompt: "🚀 Code a responsive navbar in HTML and modern CSS",
+                          icon: <Code2 className="w-4 h-4 text-[#4285f4]" />,
                         },
                         {
-                          text: "Ek funny shayari ya Bollywood dialogue bolo 🎭",
-                          icon: <Smile className="w-4 h-4 text-[#c58af9]" />,
-                          desc: "Fun masti in dramatic style",
+                          title: "Explain JS Event Loop simply",
+                          prompt: "⚡ Explain asynchronous JavaScript & Event Loop simply",
+                          icon: <Zap className="w-4 h-4 text-[#fbbf24]" />,
                         },
                         {
-                          text: "Space mein udti hui funny cat ki photo banao 🐱",
-                          icon: <ImageIcon className="w-4 h-4 text-[#7bddff]" />,
-                          desc: "Imagen 3 Ultra HD Art",
+                          title: "Write killer landing page copy",
+                          prompt: "📝 Write high-converting landing page copy for a new tech product",
+                          icon: <Feather className="w-4 h-4 text-[#d946ef]" />,
                         },
                         {
-                          text: "Aaj gold aur silver ka live rate kya hai? 💰",
-                          icon: <Search className="w-4 h-4 text-emerald-400" />,
-                          desc: "Google Search Live Real-time Data",
+                          title: "Brainstorm new game mechanics",
+                          prompt: "🧠 Brainstorm 3 addictive indie game development mechanics",
+                          icon: <Gamepad2 className="w-4 h-4 text-[#34d399]" />,
                         },
-                      ].map((sug, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setChatInput(sug.text)}
-                          className="p-3.5 bg-[#17181c]/90 hover:bg-[#1f2026] border border-white/10 rounded-2xl text-left transition-all hover:border-[#2e6eff]/50 hover:shadow-lg hover:shadow-[#2e6eff]/10 flex items-start gap-3 group"
+                      ].map((item, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => setChatInput(item.prompt)}
+                          className="bg-[#0f1117] hover:bg-[#161922] border border-white/[0.08] hover:border-[#9b72cb]/40 rounded-2xl p-3.5 cursor-pointer transition-all hover:-translate-y-0.5 flex flex-col justify-between min-h-[90px] shadow-sm group"
                         >
-                          <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                            {sug.icon}
+                          <p className="text-[13px] font-medium text-[#e2e8f0] line-clamp-2 leading-snug">
+                            {item.title}
+                          </p>
+                          <div className="self-end mt-2 text-[#64748b] group-hover:text-[#f8fafc] transition-colors">
+                            {item.icon}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="block text-xs font-semibold text-white/90 group-hover:text-white truncate">
-                              {sug.text}
-                            </span>
-                            <span className="block text-[10px] text-[#9aa0a6] mt-0.5">
-                              {sug.desc}
-                            </span>
-                          </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Render Messages */}
+                {/* Render Chat Messages */}
                 {messages.map((m, i) => (
                   <div
                     key={i}
-                    className={`flex gap-3 md:gap-4 animate-fade-in ${
+                    className={`flex gap-3 animate-fade-in ${
                       m.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
                     {m.role !== "user" && (
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-1 shadow-md">
-                        <Zap className="w-4 h-4 text-white" fill="currentColor" />
-                      </div>
+                      <div className="gemini-sparkle-icon shrink-0 mt-1"></div>
                     )}
 
                     <div
-                      className={`flex flex-col gap-1.5 max-w-[85%] md:max-w-[80%] ${
+                      className={`flex flex-col gap-1.5 max-w-[88%] ${
                         m.role === "user" ? "items-end" : "items-start"
                       }`}
                     >
                       <div
                         className={
                           m.role === "user"
-                            ? "user-msg bg-[#2e6eff] text-white px-4 py-3 rounded-2xl shadow-md"
-                            : "model-msg bg-[#17181c] border border-white/10 p-4 md:p-5 rounded-2xl shadow-lg"
+                            ? "bg-[#232733] text-white px-4 py-3 rounded-[20px] rounded-tr-[4px] text-[14px] leading-relaxed border border-white/[0.06] select-text shadow-sm"
+                            : "text-[14.5px] leading-relaxed text-[#e2e8f0] select-text w-full"
                         }
                       >
-                        <div className="markdown-body text-[0.92rem] leading-relaxed text-[#e3e3e3]">
+                        <div className="markdown-body leading-relaxed">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
@@ -1559,14 +1563,35 @@ Formatting:
                                   className || "",
                                 );
                                 return !inline && match ? (
-                                  <SyntaxHighlighter
-                                    style={vscDarkPlus}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    {...props}
-                                  >
-                                    {String(children).replace(/\n$/, "")}
-                                  </SyntaxHighlighter>
+                                  <div className="my-3 bg-black rounded-xl border border-white/10 overflow-hidden">
+                                    <div className="flex items-center justify-between px-3.5 py-1.5 bg-white/[0.04] border-b border-white/10 text-[11px] font-mono text-[#94a3b8]">
+                                      <span>{match[1]}</span>
+                                      <button
+                                        onClick={() =>
+                                          navigator.clipboard.writeText(
+                                            String(children).replace(/\n$/, ""),
+                                          )
+                                        }
+                                        className="flex items-center gap-1 hover:text-white transition-colors"
+                                      >
+                                        <Copy className="w-3 h-3" />
+                                        <span>Copy</span>
+                                      </button>
+                                    </div>
+                                    <SyntaxHighlighter
+                                      style={vscDarkPlus}
+                                      language={match[1]}
+                                      PreTag="div"
+                                      customStyle={{
+                                        margin: 0,
+                                        padding: "12px",
+                                        background: "transparent",
+                                      }}
+                                      {...props}
+                                    >
+                                      {String(children).replace(/\n$/, "")}
+                                    </SyntaxHighlighter>
+                                  </div>
                                 ) : (
                                   <code className={className} {...props}>
                                     {children}
@@ -1580,19 +1605,19 @@ Formatting:
                         </div>
 
                         {m.generatedImage && (
-                          <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 shadow-2xl group relative max-w-md">
+                          <div className="mt-3 rounded-2xl overflow-hidden border border-white/10 shadow-2xl group relative max-w-sm">
                             <img
                               src={m.generatedImage}
                               alt="Generated"
-                              className="w-full h-auto object-cover max-h-[360px]"
+                              className="w-full h-auto object-cover max-h-[320px]"
                             />
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-xs">
                               <button
                                 onClick={() => setPreviewImage(m.generatedImage!)}
-                                className="p-3 rounded-full bg-black/70 text-white hover:bg-black transition-all shadow-lg"
+                                className="p-2.5 rounded-full bg-black/70 text-white hover:bg-black transition-all shadow-lg"
                                 title="Zoom Image"
                               >
-                                <Search className="w-5 h-5" />
+                                <Search className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => {
@@ -1601,46 +1626,95 @@ Formatting:
                                   link.download = `ZoZoAI_Asset_${Date.now()}.png`;
                                   link.click();
                                 }}
-                                className="p-3 rounded-full bg-[#2e6eff] text-white hover:bg-[#255fd9] transition-all shadow-lg"
+                                className="p-2.5 rounded-full bg-gradient-to-tr from-[#4285f4] to-[#d946ef] text-white hover:scale-105 transition-all shadow-lg"
                                 title="Download Full Resolution"
                               >
-                                <Download className="w-5 h-5" />
+                                <Download className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
                         )}
 
                         {m.role === "model" && (
-                          <div className="flex items-center gap-4 mt-3 pt-2 border-t border-white/5 text-xs text-[#9aa0a6]">
+                          <div className="flex items-center gap-3.5 mt-2 pt-1 text-[#64748b]">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(m.text);
+                                setCopiedIndex(i);
+                                setTimeout(() => setCopiedIndex(null), 2000);
+                              }}
+                              className="flex items-center gap-1.5 text-xs hover:text-white transition-colors"
+                            >
+                              {copiedIndex === i ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span className="text-emerald-400">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
                             <button
                               onClick={() => speakText(cleanTextForSpeech(m.text))}
-                              className="flex items-center gap-1.5 hover:text-[#7bddff] transition-colors py-1 px-2 rounded-lg hover:bg-white/5 font-medium"
-                              title="Listen with AI Voice"
+                              className="flex items-center gap-1.5 text-xs hover:text-white transition-colors"
+                              title="Listen"
                             >
                               <Volume2 className="w-3.5 h-3.5" />
                               <span>Listen</span>
                             </button>
                             <button
-                              onClick={() => navigator.clipboard.writeText(m.text)}
-                              className="hover:text-white transition-colors py-1 px-2 rounded-lg hover:bg-white/5 font-medium"
+                              onClick={() => {
+                                const lastUser = [...messages]
+                                  .reverse()
+                                  .find((x) => x.role === "user");
+                                if (lastUser) {
+                                  setChatInput(lastUser.text);
+                                  handleAction();
+                                }
+                              }}
+                              className="flex items-center gap-1.5 text-xs hover:text-white transition-colors"
+                              title="Retry"
                             >
-                              Copy
+                              <RotateCw className="w-3.5 h-3.5" />
+                              <span>Retry</span>
+                            </button>
+                            <button
+                              className="flex items-center gap-1 text-xs hover:text-white transition-colors"
+                              title="Like"
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (navigator.share) {
+                                  navigator
+                                    .share({ title: "ZoZo AI", text: m.text })
+                                    .catch(() => {});
+                                }
+                              }}
+                              className="flex items-center gap-1 text-xs hover:text-white transition-colors"
+                              title="Share"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
                       </div>
 
                       {m.groundingUrls && m.groundingUrls.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {m.groundingUrls.slice(0, 4).map((u, idx) => (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {m.groundingUrls.slice(0, 3).map((u, idx) => (
                             <a
                               key={idx}
                               href={u.uri}
                               target="_blank"
                               rel="noreferrer"
-                              className="flex items-center gap-1.5 px-3 py-1 bg-[#1e1f24] border border-white/10 rounded-full text-xs text-[#7bddff] hover:bg-[#282a30] transition-all truncate max-w-[220px]"
+                              className="flex items-center gap-1 px-2.5 py-0.5 bg-white/[0.05] border border-white/10 rounded-full text-[11px] text-[#7bddff] hover:bg-white/10 transition-all truncate max-w-[200px]"
                             >
-                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                               <span className="truncate">{u.title}</span>
                             </a>
                           ))}
@@ -1652,12 +1726,10 @@ Formatting:
 
                 {/* Streaming Indicator */}
                 {isStreaming && (
-                  <div className="flex gap-3 md:gap-4 animate-fade-in justify-start">
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#2e6eff] to-[#7bddff] flex items-center justify-center shrink-0 mt-1 shadow-md">
-                      <Zap className="w-4 h-4 text-white" fill="currentColor" />
-                    </div>
-                    <div className="model-msg bg-[#17181c] border border-white/10 p-4 md:p-5 rounded-2xl shadow-lg max-w-[85%] md:max-w-[80%]">
-                      <div className="markdown-body text-[0.92rem] text-[#e3e3e3] is-typing">
+                  <div className="flex gap-3 animate-fade-in justify-start">
+                    <div className="gemini-sparkle-icon shrink-0 mt-1"></div>
+                    <div className="text-[14.5px] leading-relaxed text-[#e2e8f0] select-text max-w-[88%]">
+                      <div className="markdown-body is-typing">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {streamingText}
                         </ReactMarkdown>
@@ -1666,38 +1738,14 @@ Formatting:
                   </div>
                 )}
 
-                {/* Search Status */}
-                {isSearching && (
-                  <div className="flex gap-3 animate-fade-in">
-                    <div className="w-8 h-8 rounded-xl bg-[#1e1f24] border border-white/10 flex items-center justify-center shrink-0 mt-1">
-                      <Search className="w-4 h-4 text-[#7bddff] animate-pulse" />
-                    </div>
-                    <div className="bg-[#17181c] border border-white/10 p-3.5 rounded-2xl max-w-[85%]">
-                      <div className="flex items-center gap-2 text-xs text-[#7bddff] font-bold uppercase tracking-wider mb-1">
-                        <div className="w-2 h-2 bg-[#7bddff] rounded-full animate-ping"></div>
-                        <span>ZoZo Live Web Search</span>
-                      </div>
-                      <p className="text-xs text-[#9aa0a6] italic">
-                        {searchStatus}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Generating Image Status */}
-                {isGeneratingImage && (
-                  <div className="flex gap-3 animate-fade-in">
-                    <div className="w-8 h-8 rounded-xl bg-[#1e1f24] border border-white/10 flex items-center justify-center shrink-0 mt-1">
-                      <Cpu className="w-4 h-4 text-[#f97316] animate-spin" />
-                    </div>
-                    <div className="bg-[#17181c] border border-white/10 p-3.5 rounded-2xl max-w-[85%]">
-                      <div className="flex items-center gap-2 text-xs text-[#f97316] font-bold uppercase tracking-wider mb-1">
-                        <div className="w-2 h-2 bg-[#f97316] rounded-full animate-ping"></div>
-                        <span>ZoZo Photo Creator Studio</span>
-                      </div>
-                      <p className="text-xs text-[#9aa0a6] italic">
-                        Ultra-HD photo create ho rahi hai...
-                      </p>
+                {/* Thinking / Search / Generation Loader */}
+                {(isSearching || isGeneratingImage) && (
+                  <div className="flex gap-3 animate-fade-in justify-start items-center">
+                    <div className="gemini-sparkle-icon shrink-0"></div>
+                    <div className="gemini-loader">
+                      <div className="loader-dot"></div>
+                      <div className="loader-dot"></div>
+                      <div className="loader-dot"></div>
                     </div>
                   </div>
                 )}
@@ -1706,105 +1754,65 @@ Formatting:
               </div>
             </div>
 
-            {/* Expansive Floating Chat Input Bar */}
-            <div className="py-2 md:py-3 shrink-0 flex flex-col gap-2">
+            {/* Floating Gemini Bottom Composer */}
+            <footer className="py-2 md:py-3 shrink-0 flex flex-col gap-2 z-20">
               {/* Quick Feature Shortcut Pills Strip */}
-              <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 px-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5 px-0.5">
                 <button
                   onClick={() => setIsYouTubeModalOpen(true)}
-                  className="px-2.5 py-1 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                  className="px-2.5 py-1 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm active:scale-95"
                 >
                   <Play className="w-3 h-3 fill-current text-red-400" />
                   <span>YouTube Songs</span>
                 </button>
                 <button
                   onClick={() => setIsPhoneModalOpen(true)}
-                  className="px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                  className="px-2.5 py-1 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm active:scale-95"
                 >
                   <PhoneCall className="w-3 h-3 text-emerald-400" />
                   <span>Phone Dialer</span>
                 </button>
                 <button
                   onClick={() => setIsWeatherModalOpen(true)}
-                  className="px-2.5 py-1 rounded-full bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 text-sky-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                  className="px-2.5 py-1 rounded-full bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 text-sky-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm active:scale-95"
                 >
                   <Sun className="w-3 h-3 text-sky-400" />
                   <span>Live Weather</span>
                 </button>
                 <button
                   onClick={() => setIsTrainModalOpen(true)}
-                  className="px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm"
+                  className="px-2.5 py-1 rounded-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 shrink-0 transition-all shadow-sm active:scale-95"
                 >
                   <Train className="w-3 h-3 text-amber-400" />
-                  <span>Train Tracker (IRCTC)</span>
+                  <span>Train Tracker</span>
                 </button>
               </div>
 
-              <div className="bg-[#17181c]/95 border border-white/15 rounded-2xl p-2 md:p-3 shadow-2xl flex items-end gap-2 backdrop-blur-xl">
-                {/* Dictation Button */}
-                <button
-                  onClick={toggleDictation}
-                  className={`p-2.5 rounded-xl transition-all shrink-0 ${
-                    isDictating
-                      ? "bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-500/50 animate-pulse"
-                      : "hover:bg-white/5 text-[#c4c7c5]"
-                  }`}
-                  title="Bol kar type karein (Voice Typing in Hindi & English)"
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
-
-                {/* Voice Output Toggle */}
-                <button
-                  onClick={() => {
-                    if (isVoiceEnabled) stopAllSpeech();
-                    setIsVoiceEnabled(!isVoiceEnabled);
-                  }}
-                  className={`p-2.5 rounded-xl transition-all shrink-0 hover:bg-white/5 ${
-                    isVoiceEnabled ? "text-[#7bddff]" : "text-red-400"
-                  }`}
-                  title={isVoiceEnabled ? "Mute AI Voice" : "Unmute AI Voice"}
-                >
-                  {isVoiceEnabled ? (
-                    <Volume2 className="w-4 h-4" />
-                  ) : (
-                    <VolumeX className="w-4 h-4" />
-                  )}
-                </button>
-
-                {/* Direct Live Voice Call Button in Input Bar */}
-                <button
-                  onClick={() => {
-                    setIsSpeakToSpeakOpen(true);
-                    if (!isActive) startLiveSession();
-                  }}
-                  className="p-2.5 rounded-xl transition-all shrink-0 bg-gradient-to-tr from-[#2e6eff]/20 to-[#7bddff]/20 hover:from-[#2e6eff]/30 hover:to-[#7bddff]/30 text-[#7bddff] border border-[#2e6eff]/30 hover:scale-105 active:scale-95"
-                  title="Open Full-Size Live Voice Call with ZoZo AI"
-                >
-                  <Phone className="w-4 h-4 fill-current animate-pulse" />
-                </button>
-
-                {/* Quick Photo Creator Button */}
+              {/* Floating Pill Composer Container */}
+              <div className="bg-[#161922] border border-white/15 focus-within:border-[#9b72cb]/60 focus-within:shadow-[0_0_24px_rgba(155,114,203,0.35)] rounded-[28px] p-2 shadow-2xl flex items-end gap-1.5 transition-all">
+                {/* Media / Photo Creator Button */}
                 <button
                   onClick={() => {
                     setChatInput("Ek ultra-HD photorealistic photo banao: ");
-                    if (textareaRef.current) {
-                      textareaRef.current.focus();
-                    }
+                    if (textareaRef.current) textareaRef.current.focus();
                   }}
-                  className="p-2.5 rounded-xl transition-all shrink-0 bg-[#c58af9]/10 hover:bg-[#c58af9]/20 text-[#c58af9] border border-[#c58af9]/20"
-                  title="Make HD Photo / Image with AI"
+                  className="w-9 h-9 rounded-full text-[#94a3b8] hover:text-white flex items-center justify-center shrink-0 hover:bg-white/5 transition-all"
+                  title="Create Photo with AI"
                 >
-                  <ImageIcon className="w-4 h-4" />
+                  <ImageIcon className="w-5 h-5" />
                 </button>
 
-                {/* 3-Points / 3-Dots Drawer Trigger Button in Input Bar */}
+                {/* Voice Typing / Dictation */}
                 <button
-                  onClick={() => setIsDrawerOpen(true)}
-                  className="p-2.5 rounded-xl transition-all shrink-0 bg-white/5 hover:bg-white/10 text-[#7bddff] border border-white/10"
-                  title="Open Options Drawer (Gallery, Voice, Plugins, New Chat)"
+                  onClick={toggleDictation}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    isDictating
+                      ? "bg-emerald-500/20 text-emerald-400 ring-2 ring-emerald-500/50 animate-pulse"
+                      : "text-[#94a3b8] hover:text-white hover:bg-white/5"
+                  }`}
+                  title="Voice Typing (Dictation)"
                 >
-                  <MoreVertical className="w-4 h-4" />
+                  <Mic className="w-5 h-5" />
                 </button>
 
                 {/* Textarea */}
@@ -1815,7 +1823,8 @@ Formatting:
                   onChange={(e) => {
                     setChatInput(e.target.value);
                     e.target.style.height = "auto";
-                    e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+                    e.target.style.height =
+                      Math.min(e.target.scrollHeight, 140) + "px";
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -1823,12 +1832,24 @@ Formatting:
                       handleAction();
                     }
                   }}
-                  placeholder="ZoZo AI se kuch bhi pucho, photo banao ya joke suno..."
-                  className="flex-1 bg-transparent outline-none text-[#e3e3e3] placeholder:text-[#9aa0a6] py-1.5 resize-none max-h-36 custom-scrollbar text-sm"
+                  placeholder="Ask Gemini..."
+                  className="flex-1 bg-transparent outline-none text-[#f8fafc] placeholder:text-[#64748b] py-1.5 resize-none max-h-36 custom-scrollbar text-[14.5px] leading-relaxed select-text"
                   disabled={isSearching || isGeneratingImage}
                 />
 
-                {/* Send Button */}
+                {/* Voice Call Trigger Button */}
+                <button
+                  onClick={() => {
+                    setIsSpeakToSpeakOpen(true);
+                    if (!isActive) startLiveSession();
+                  }}
+                  className="w-9 h-9 rounded-full text-[#94a3b8] hover:text-[#9b72cb] flex items-center justify-center shrink-0 hover:bg-white/5 transition-all"
+                  title="Open Live Voice Call"
+                >
+                  <Phone className="w-4 h-4 fill-current text-[#9b72cb]" />
+                </button>
+
+                {/* Send Pill Button */}
                 <button
                   onClick={handleAction}
                   disabled={
@@ -1837,16 +1858,20 @@ Formatting:
                     isGeneratingImage ||
                     isStreaming
                   }
-                  className={`p-2.5 rounded-xl transition-all shrink-0 font-bold ${
-                    chatInput.trim()
-                      ? "bg-[#2e6eff] hover:bg-[#255fd9] text-white shadow-lg shadow-[#2e6eff]/30 cursor-pointer"
-                      : "text-[#5f6368] bg-white/5 cursor-not-allowed"
+                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    chatInput.trim() &&
+                    !isSearching &&
+                    !isGeneratingImage &&
+                    !isStreaming
+                      ? "bg-gradient-to-tr from-[#4285f4] via-[#9b72cb] to-[#d946ef] text-white shadow-lg shadow-[#9b72cb]/30 cursor-pointer active:scale-95"
+                      : "bg-white/[0.08] text-[#64748b] cursor-not-allowed"
                   }`}
+                  title="Send"
                 >
-                  <Send className="w-4 h-4" />
+                  <ArrowUp className="w-5 h-5" />
                 </button>
               </div>
-            </div>
+            </footer>
           </div>
         ) : (
           /* Full Screen Gallery View */
